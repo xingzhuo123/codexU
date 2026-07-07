@@ -1780,8 +1780,7 @@ final class CodexUsageReader {
                 OR recency_at >= \(Int(dayStart.timeIntervalSince1970))
                 OR created_at >= \(Int(dayStart.timeIntervalSince1970))
               )
-            ORDER BY recency_at DESC, updated_at DESC
-            LIMIT 24;
+            ORDER BY recency_at DESC, updated_at DESC;
             """
 
             let archivedTodayQuery = """
@@ -1789,8 +1788,7 @@ final class CodexUsageReader {
             FROM threads
             WHERE archived = 1
               AND COALESCE(archived_at, updated_at) >= \(Int(dayStart.timeIntervalSince1970))
-            ORDER BY COALESCE(archived_at, updated_at) DESC
-            LIMIT 12;
+            ORDER BY COALESCE(archived_at, updated_at) DESC;
             """
 
             let todayThreads = runSQLiteJSON(sqlitePath: sqlitePath, dbPath: dbPath, query: todayThreadsQuery)
@@ -1815,10 +1813,10 @@ final class CodexUsageReader {
         let scheduledItems = readAutomationTasks()
 
         return TaskBoard(refreshedAt: Date(), columns: [
-            TaskColumn(id: .active, title: "进行中", count: activeItems.count, items: Array(activeItems.prefix(3))),
-            TaskColumn(id: .pending, title: "待处理", count: pendingItems.count, items: Array(pendingItems.prefix(3))),
-            TaskColumn(id: .scheduled, title: "定时", count: scheduledItems.count, items: Array(scheduledItems.prefix(3))),
-            TaskColumn(id: .done, title: "完成", count: doneItems.count, items: Array(doneItems.prefix(3)))
+            TaskColumn(id: .active, title: "进行中", count: activeItems.count, items: activeItems),
+            TaskColumn(id: .pending, title: "待处理", count: pendingItems.count, items: pendingItems),
+            TaskColumn(id: .scheduled, title: "定时", count: scheduledItems.count, items: scheduledItems),
+            TaskColumn(id: .done, title: "完成", count: doneItems.count, items: doneItems)
         ])
     }
 
@@ -2453,6 +2451,50 @@ enum WidgetThemeMode: String, CaseIterable, Equatable {
     }
 }
 
+final class AppSettings: ObservableObject {
+    private static let keepMainWindowOnTopKey = "codexU.keepMainWindowOnTop"
+    private static let keepRunningWhenMainWindowClosedKey = "codexU.keepRunningWhenMainWindowClosed"
+
+    private let defaults: UserDefaults
+
+    @Published var language: WidgetLanguage {
+        didSet {
+            language.persist(defaults: defaults)
+        }
+    }
+
+    @Published var themeMode: WidgetThemeMode {
+        didSet {
+            themeMode.persist(defaults: defaults)
+            themeMode.applyAppearance()
+        }
+    }
+
+    @Published var keepMainWindowOnTop: Bool {
+        didSet {
+            defaults.set(keepMainWindowOnTop, forKey: Self.keepMainWindowOnTopKey)
+        }
+    }
+
+    @Published var keepRunningWhenMainWindowClosed: Bool {
+        didSet {
+            defaults.set(keepRunningWhenMainWindowClosed, forKey: Self.keepRunningWhenMainWindowClosedKey)
+        }
+    }
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        language = WidgetLanguage.storedOrAutomatic(defaults: defaults)
+        themeMode = WidgetThemeMode.storedOrAutomatic(defaults: defaults)
+        keepMainWindowOnTop = defaults.bool(forKey: Self.keepMainWindowOnTopKey)
+        if defaults.object(forKey: Self.keepRunningWhenMainWindowClosedKey) == nil {
+            keepRunningWhenMainWindowClosed = true
+        } else {
+            keepRunningWhenMainWindowClosed = defaults.bool(forKey: Self.keepRunningWhenMainWindowClosedKey)
+        }
+    }
+}
+
 enum DashboardTab: String, CaseIterable, Equatable, Identifiable {
     case tasks
     case usage
@@ -2468,38 +2510,33 @@ final class WindowPresentationState: ObservableObject {
 
 struct UsageWidgetView: View {
     @ObservedObject var store: UsageStore
-    @ObservedObject var windowState: WindowPresentationState
+    @ObservedObject var settings: AppSettings
     @Environment(\.colorScheme) private var colorScheme
-    @State private var language = WidgetLanguage.storedOrAutomatic()
-    @State private var themeMode = WidgetThemeMode.storedOrAutomatic()
     @State private var selectedDashboardTab: DashboardTab = .tasks
-    let onPinnedFrontChange: (Bool) -> Void
 
     static let widgetWidth: CGFloat = 820
     static let widgetDefaultHeight: CGFloat = 720
     static let widgetMinHeight: CGFloat = 620
     static let widgetMaxHeight: CGFloat = 920
+    static let windowCornerRadius: CGFloat = 18
 
     private var snapshot: UsageSnapshot { store.snapshot }
     private var primary: RateWindow? { snapshot.primary }
+    private var language: WidgetLanguage { settings.language }
+    private var themeMode: WidgetThemeMode { settings.themeMode }
     private var effectiveColorScheme: ColorScheme {
         themeMode.preferredColorScheme ?? colorScheme
     }
 
     var body: some View {
-        Group {
-            if #available(macOS 26.0, *) {
-                GlassEffectContainer(spacing: 10) {
-                    widgetContent
-                        .glassEffect(
-                            .regular.tint(WidgetPalette.windowTint(effectiveColorScheme)),
-                            in: .rect(cornerRadius: 24, style: .continuous)
-                        )
-                }
-            } else {
-                widgetContent
-            }
+        ZStack(alignment: .topLeading) {
+            windowSurface
+                .ignoresSafeArea(.container, edges: [.top, .bottom])
+                .accessibilityHidden(true)
+            widgetContent
         }
+        .frame(width: Self.widgetWidth, alignment: .topLeading)
+        .frame(minHeight: Self.widgetMinHeight, maxHeight: .infinity, alignment: .topLeading)
         .environment(\.colorScheme, effectiveColorScheme)
         .preferredColorScheme(themeMode.preferredColorScheme)
         .onAppear {
@@ -2507,9 +2544,27 @@ struct UsageWidgetView: View {
         }
     }
 
+    @ViewBuilder
+    private var windowSurface: some View {
+        if #available(macOS 26.0, *) {
+            RoundedRectangle(cornerRadius: Self.windowCornerRadius, style: .continuous)
+                .fill(Color.clear)
+                .glassEffect(
+                    .regular.tint(WidgetPalette.sectionTint(effectiveColorScheme)),
+                    in: .rect(cornerRadius: Self.windowCornerRadius, style: .continuous)
+                )
+        } else {
+            RoundedRectangle(cornerRadius: Self.windowCornerRadius, style: .continuous)
+                .fill(WidgetPalette.sectionFill(effectiveColorScheme))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Self.windowCornerRadius, style: .continuous)
+                        .strokeBorder(WidgetPalette.sectionStroke(effectiveColorScheme), lineWidth: 0.8)
+                )
+        }
+    }
+
     private var widgetContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            header
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 12) {
                     if shouldShowEnvironmentChecklist {
@@ -2523,44 +2578,8 @@ struct UsageWidgetView: View {
             footer
         }
         .padding(.horizontal, 16)
-        .padding(.top, 18)
+        .padding(.top, 12)
         .padding(.bottom, 14)
-        .frame(width: Self.widgetWidth, alignment: .topLeading)
-        .frame(minHeight: Self.widgetMinHeight, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private var header: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 9) {
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 34, height: 34)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .accessibilityHidden(true)
-                Text("codexU")
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.primary)
-            }
-            Spacer()
-            RuntimeSelector(
-                selected: store.selectedRuntimeScope,
-                language: language
-            ) { scope in
-                store.selectRuntime(scope)
-            }
-            ThemeSwitch(themeMode: themeMode, language: language) { selectedMode in
-                themeMode = selectedMode
-                selectedMode.persist()
-                selectedMode.applyAppearance()
-            }
-            LanguageSwitch(language: language) { selectedLanguage in
-                language = selectedLanguage
-                selectedLanguage.persist()
-            }
-            planPill
-            headerActionGroup
-        }
     }
 
     private var environmentChecklistSection: some View {
@@ -2591,10 +2610,6 @@ struct UsageWidgetView: View {
         .sectionBackground()
     }
 
-    private var planPill: some View {
-        statusPill(planLabel)
-    }
-
     private func statusPill(_ label: String) -> some View {
         Text(label)
             .font(.system(size: 11, weight: .semibold))
@@ -2609,48 +2624,6 @@ struct UsageWidgetView: View {
                             .strokeBorder(WidgetPalette.controlStroke(effectiveColorScheme), lineWidth: 0.8)
                     )
             )
-    }
-
-    private var headerActionGroup: some View {
-        let isPinned = windowState.isPinnedToFront
-
-        return HStack(spacing: 2) {
-            HeaderActionButton(
-                systemName: isPinned ? "pin.fill" : "pin",
-                isActive: isPinned,
-                help: language.text("固定前台", "Pin to front"),
-                accessibilityLabel: language.text("固定前台", "Pin to front"),
-                accessibilityValue: isPinned ? language.text("已开启", "On") : language.text("未开启", "Off")
-            ) {
-                onPinnedFrontChange(!isPinned)
-            }
-
-            HeaderActionButton(
-                systemName: store.isRefreshing ? "hourglass" : "arrow.clockwise",
-                help: language.text("刷新", "Refresh"),
-                accessibilityLabel: language.text("刷新", "Refresh")
-            ) {
-                store.refresh()
-            }
-
-            HeaderActionButton(
-                systemName: "xmark",
-                hoverTint: WidgetPalette.statusDanger,
-                help: language.text("退出", "Quit"),
-                accessibilityLabel: language.text("退出", "Quit")
-            ) {
-                NSApp.terminate(nil)
-            }
-        }
-        .padding(3)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(WidgetPalette.controlFill(effectiveColorScheme))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(WidgetPalette.controlStroke(effectiveColorScheme), lineWidth: 0.8)
-                )
-        )
     }
 
     private var usageOverviewSection: some View {
@@ -2765,10 +2738,6 @@ struct UsageWidgetView: View {
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.tertiary)
         }
-    }
-
-    private var planLabel: String {
-        snapshot.account?.planType?.uppercased() ?? "LOCAL"
     }
 
     private var taskBoardSummary: String {
@@ -3050,6 +3019,274 @@ struct HeaderActionButton: View {
         .onHover { hovering in
             isHovering = hovering
         }
+    }
+}
+
+struct TitlebarToolbarView: View {
+    @ObservedObject var store: UsageStore
+    @ObservedObject var settings: AppSettings
+    @Environment(\.colorScheme) private var colorScheme
+    let onOpenSettings: () -> Void
+
+    private var language: WidgetLanguage { settings.language }
+    private var themeMode: WidgetThemeMode { settings.themeMode }
+    private var effectiveColorScheme: ColorScheme {
+        themeMode.preferredColorScheme ?? colorScheme
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            RuntimeSelector(
+                selected: store.selectedRuntimeScope,
+                language: language
+            ) { scope in
+                store.selectRuntime(scope)
+            }
+
+            HStack(spacing: 2) {
+                HeaderActionButton(
+                    systemName: store.isRefreshing ? "hourglass" : "arrow.clockwise",
+                    help: language.text("刷新", "Refresh"),
+                    accessibilityLabel: language.text("刷新", "Refresh")
+                ) {
+                    store.refresh()
+                }
+
+                HeaderActionButton(
+                    systemName: "gearshape",
+                    help: language.text("设置", "Settings"),
+                    accessibilityLabel: language.text("设置", "Settings")
+                ) {
+                    onOpenSettings()
+                }
+            }
+            .padding(3)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(WidgetPalette.controlFill(effectiveColorScheme))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(WidgetPalette.controlStroke(effectiveColorScheme), lineWidth: 0.8)
+                    )
+            )
+        }
+        .padding(.top, 8)
+        .padding(.bottom, 2)
+        .padding(.trailing, 14)
+        .frame(height: 44, alignment: .top)
+        .environment(\.colorScheme, effectiveColorScheme)
+        .preferredColorScheme(themeMode.preferredColorScheme)
+    }
+}
+
+struct SettingsPanelView: View {
+    @ObservedObject var settings: AppSettings
+    @ObservedObject var store: UsageStore
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var language: WidgetLanguage { settings.language }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            settingsHeader
+            settingsSection(
+                title: language.text("通用", "General"),
+                detail: language.text("界面偏好", "Interface")
+            ) {
+                SettingsPickerRow(
+                    title: language.text("语言", "Language"),
+                    detail: language.text("影响主窗口、浮窗和设置窗口", "Applies to the main window, menu popover, and settings")
+                ) {
+                    Picker("", selection: $settings.language) {
+                        Text("中文").tag(WidgetLanguage.zh)
+                        Text("English").tag(WidgetLanguage.en)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 156)
+                }
+
+                SettingsPickerRow(
+                    title: language.text("外观", "Appearance"),
+                    detail: language.text("默认跟随系统", "System is the default")
+                ) {
+                    Picker("", selection: $settings.themeMode) {
+                        Text(language.text("自动", "System")).tag(WidgetThemeMode.system)
+                        Text(language.text("浅色", "Light")).tag(WidgetThemeMode.light)
+                        Text(language.text("深色", "Dark")).tag(WidgetThemeMode.dark)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 190)
+                }
+            }
+
+            settingsSection(
+                title: language.text("窗口", "Window"),
+                detail: language.text("主窗口行为", "Main window")
+            ) {
+                SettingsToggleRow(
+                    title: language.text("保持主窗口置顶", "Keep main window on top"),
+                    detail: language.text("适合需要持续观察用量时开启", "Use this when you need the usage view visible")
+                ) {
+                    Toggle("", isOn: $settings.keepMainWindowOnTop)
+                        .labelsHidden()
+                }
+
+                SettingsToggleRow(
+                    title: language.text("关闭后继续在菜单栏运行", "Keep running after closing the window"),
+                    detail: language.text("关闭主窗口不会退出应用，可从菜单栏再次打开", "Closing the main window keeps the menu bar item available")
+                ) {
+                    Toggle("", isOn: $settings.keepRunningWhenMainWindowClosed)
+                        .labelsHidden()
+                }
+
+                SettingsValueRow(
+                    title: language.text("快捷键", "Shortcut"),
+                    detail: language.text("显示或隐藏主窗口", "Show or hide the main window"),
+                    value: "⌘U"
+                )
+            }
+
+            settingsSection(
+                title: language.text("账户", "Account"),
+                detail: language.text("只读状态", "Read only")
+            ) {
+                SettingsValueRow(
+                    title: language.text("当前 Runtime", "Current runtime"),
+                    detail: language.text("主窗口数据范围", "Main window data scope"),
+                    value: store.selectedRuntimeScope.displayName
+                )
+                SettingsValueRow(
+                    title: language.text("计划状态", "Plan"),
+                    detail: language.text("来自本机账户读取结果", "Read from the local account result"),
+                    value: planLabel
+                )
+            }
+        }
+        .padding(20)
+        .frame(width: 480, alignment: .topLeading)
+        .background(WidgetPalette.sectionFill(colorScheme).opacity(0.35))
+    }
+
+    private var settingsHeader: some View {
+        HStack(spacing: 10) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 32, height: 32)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(language.text("设置", "Settings"))
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                Text("codexU")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+    }
+
+    private func settingsSection<Content: View>(
+        title: String,
+        detail: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionTitle(title: title, detail: detail)
+            VStack(spacing: 0) {
+                content()
+            }
+            .cardBackground(cornerRadius: 10, elevated: true)
+        }
+    }
+
+    private var planLabel: String {
+        store.snapshot.account?.planType?.uppercased() ?? "LOCAL"
+    }
+}
+
+struct SettingsPickerRow<Control: View>: View {
+    let title: String
+    let detail: String
+    let control: Control
+
+    init(title: String, detail: String, @ViewBuilder control: () -> Control) {
+        self.title = title
+        self.detail = detail
+        self.control = control()
+    }
+
+    var body: some View {
+        SettingsBaseRow(title: title, detail: detail) {
+            control
+        }
+    }
+}
+
+struct SettingsToggleRow<Control: View>: View {
+    let title: String
+    let detail: String
+    let control: Control
+
+    init(title: String, detail: String, @ViewBuilder control: () -> Control) {
+        self.title = title
+        self.detail = detail
+        self.control = control()
+    }
+
+    var body: some View {
+        SettingsBaseRow(title: title, detail: detail) {
+            control
+        }
+    }
+}
+
+struct SettingsValueRow: View {
+    let title: String
+    let detail: String
+    let value: String
+
+    var body: some View {
+        SettingsBaseRow(title: title, detail: detail) {
+            Text(value)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .lineLimit(1)
+        }
+    }
+}
+
+struct SettingsBaseRow<Accessory: View>: View {
+    let title: String
+    let detail: String
+    let accessory: Accessory
+
+    init(title: String, detail: String, @ViewBuilder accessory: () -> Accessory) {
+        self.title = title
+        self.detail = detail
+        self.accessory = accessory()
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text(detail)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 10)
+            accessory
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 }
 
@@ -3738,8 +3975,15 @@ struct QuotaValueProgressBar: View {
         if clamped <= subscriptionCeiling {
             fraction = subscriptionBand * (clamped / subscriptionCeiling)
         } else {
-            let remainingValue = max(maxValue - subscriptionCeiling, 1)
-            fraction = subscriptionBand + (1 - subscriptionBand) * ((clamped - subscriptionCeiling) / remainingValue)
+            let remainingValue = max(maxValue - subscriptionCeiling, 0)
+            let scaleBase = max(subscriptionCeiling, 1)
+            if remainingValue <= 0 {
+                fraction = 1
+            } else {
+                let tailValue = clamped - subscriptionCeiling
+                let tailProgress = log1p(tailValue / scaleBase) / log1p(remainingValue / scaleBase)
+                fraction = subscriptionBand + (1 - subscriptionBand) * tailProgress
+            }
         }
 
         let raw = width * CGFloat(max(0, min(1, fraction)))
@@ -5064,7 +5308,7 @@ struct RingRGBColor: Equatable {
     }
 }
 
-private enum WidgetPalette {
+enum WidgetPalette {
     static let brandPrimaryRGB = RingRGBColor(red: 0.157, green: 0.400, blue: 0.969) // #2866F7
     static let brandPrimaryStrongRGB = RingRGBColor(red: 0.122, green: 0.349, blue: 0.929) // #1F59ED
     static let brandPrimaryLightRGB = RingRGBColor(red: 0.482, green: 0.627, blue: 1.000) // #7BA0FF
@@ -5148,7 +5392,7 @@ private let dashboardCardHeaderHeight: CGFloat = 28
 private let dashboardCardHeaderSpacing: CGFloat = 8
 private let dashboardCardContentSpacing: CGFloat = 8
 private let dashboardHeaderControlHeight: CGFloat = 24
-private let headerActionButtonSize: CGFloat = 28
+private let headerActionButtonSize: CGFloat = 24
 private let dashboardTabSegmentWidth: CGFloat = 96
 private let dashboardTabIconWidth: CGFloat = 14
 private let dashboardTabHorizontalPadding: CGFloat = 10
@@ -5812,59 +6056,56 @@ final class GlassHostingContainer<Content: View>: NSView {
     override var mouseDownCanMoveWindow: Bool { true }
 }
 
-final class DesktopWidgetWindow: NSPanel {
-    private static let desktopLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
-
+final class MainAppWindow: NSWindow {
     init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
-            styleMask: [.borderless, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
+        title = "codexU"
+        titleVisibility = .hidden
+        titlebarAppearsTransparent = true
+        isReleasedWhenClosed = false
         isOpaque = false
         backgroundColor = .clear
         hasShadow = true
-        ignoresMouseEvents = false
-        acceptsMouseMovedEvents = true
         isMovableByWindowBackground = true
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        level = Self.desktopLevel
-        hidesOnDeactivate = false
-    }
-
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-
-    func moveToDesktopLayer() {
-        level = Self.desktopLevel
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        orderFrontRegardless()
-    }
-
-    func moveToFrontLayer() {
-        level = .floating
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        acceptsMouseMovedEvents = true
+        collectionBehavior = [.fullScreenAuxiliary]
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate {
     private let store = UsageStore()
-    private let windowState = WindowPresentationState()
-    private var window: DesktopWidgetWindow?
+    private let settings = AppSettings()
+    private var window: MainAppWindow?
+    private var settingsWindow: NSWindow?
+    private var titlebarToolbarController: NSTitlebarAccessoryViewController?
     private var statusItem: NSStatusItem?
     private var statusPopover: NSPopover?
+    private var statusPopoverEventMonitors: [Any] = []
     private var globalHotKeyRef: EventHotKeyRef?
     private var globalHotKeyHandler: EventHandlerRef?
-    private var isFrontMode = false
+    private var cancellables = Set<AnyCancellable>()
+    private let statusItemUsageSize = NSSize(width: 116, height: 22)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
-        WidgetThemeMode.storedOrAutomatic().applyAppearance()
+        NSApp.setActivationPolicy(.regular)
+        settings.themeMode.applyAppearance()
+        setupMainMenu()
         debugLog("app launched bundle=\(Bundle.main.bundlePath)")
 
+        createMainWindow()
+        setupStatusItem()
+        observeStatusItemUsage()
+        observeSettings()
+        registerGlobalHotKey()
+        store.start()
+    }
+
+    private func createMainWindow() {
         let width = UsageWidgetView.widgetWidth
         let height = UsageWidgetView.widgetDefaultHeight
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
@@ -5873,82 +6114,234 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             y: max(screenFrame.minY + 16, screenFrame.maxY - height - 36)
         )
 
-        let panel = DesktopWidgetWindow(contentRect: NSRect(origin: origin, size: CGSize(width: width, height: height)))
-        panel.delegate = self
-        panel.minSize = CGSize(width: UsageWidgetView.widgetWidth, height: UsageWidgetView.widgetMinHeight)
-        panel.maxSize = CGSize(width: UsageWidgetView.widgetWidth, height: UsageWidgetView.widgetMaxHeight)
-        panel.contentMinSize = panel.minSize
-        panel.contentMaxSize = panel.maxSize
-        panel.contentView = GlassHostingContainer(
+        let mainWindow = MainAppWindow(contentRect: NSRect(origin: origin, size: CGSize(width: width, height: height)))
+        mainWindow.delegate = self
+        mainWindow.minSize = CGSize(width: UsageWidgetView.widgetWidth, height: UsageWidgetView.widgetMinHeight)
+        mainWindow.maxSize = CGSize(width: UsageWidgetView.widgetWidth, height: UsageWidgetView.widgetMaxHeight)
+        mainWindow.contentMinSize = mainWindow.minSize
+        mainWindow.contentMaxSize = mainWindow.maxSize
+        mainWindow.contentView = GlassHostingContainer(
             rootView: UsageWidgetView(
                 store: store,
-                windowState: windowState,
-                onPinnedFrontChange: { [weak self] isPinned in
-                    self?.setPinnedToFront(isPinned)
-                }
+                settings: settings
             ),
-            cornerRadius: 24
+            cornerRadius: UsageWidgetView.windowCornerRadius
         )
-        panel.moveToDesktopLayer()
-        window = panel
+        installTitlebarToolbar(on: mainWindow)
+        window = mainWindow
+        applyMainWindowLevel()
+        showMainWindow()
+    }
 
-        setupStatusItem()
-        registerGlobalHotKey()
-        store.start()
+    private func installTitlebarToolbar(on window: NSWindow) {
+        let toolbarView = NSHostingView(
+            rootView: TitlebarToolbarView(
+                store: store,
+                settings: settings,
+                onOpenSettings: { [weak self] in
+                    self?.openSettingsWindow()
+                }
+            )
+        )
+        toolbarView.frame = NSRect(x: 0, y: 0, width: 334, height: 44)
+
+        let controller = NSTitlebarAccessoryViewController()
+        controller.layoutAttribute = .right
+        controller.view = toolbarView
+        window.addTitlebarAccessoryViewController(controller)
+        titlebarToolbarController = controller
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        closeStatusPopover()
         unregisterGlobalHotKey()
         store.stop()
     }
 
-    func toggleWindowLayer() {
+    func toggleMainWindow() {
         guard let window else { return }
-        if windowState.isPinnedToFront {
-            setPinnedToFront(false)
+
+        if window.isVisible, !window.isMiniaturized, window.isKeyWindow {
+            window.orderOut(nil)
             return
         }
 
-        if isFrontMode {
-            leaveFrontModeIfNeeded()
-        } else {
-            window.moveToFrontLayer()
-            isFrontMode = true
-        }
+        showMainWindow()
     }
 
     func applicationDidResignActive(_ notification: Notification) {
-        leaveFrontModeIfNeeded()
+        closeStatusPopover()
     }
 
-    func windowDidResignKey(_ notification: Notification) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self, !NSApp.isActive, !self.windowState.isPinnedToFront else { return }
-            self.leaveFrontModeIfNeeded()
-        }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 
-    private func setPinnedToFront(_ isPinned: Bool) {
-        guard let window else {
-            windowState.isPinnedToFront = false
-            return
-        }
-
-        windowState.isPinnedToFront = isPinned
-        if isPinned {
-            window.moveToFrontLayer()
-            isFrontMode = true
-        } else {
-            leaveFrontModeIfNeeded(force: true)
-        }
-        updateStatusItemTooltip()
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showMainWindow()
+        return true
     }
 
-    private func leaveFrontModeIfNeeded(force: Bool = false) {
-        guard isFrontMode, let window else { return }
-        guard force || !windowState.isPinnedToFront else { return }
-        window.moveToDesktopLayer()
-        isFrontMode = false
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if sender === window {
+            if settings.keepRunningWhenMainWindowClosed {
+                sender.orderOut(nil)
+            } else {
+                NSApp.terminate(nil)
+            }
+            return false
+        }
+        return true
+    }
+
+    private func showMainWindow() {
+        guard let window else { return }
+        closeStatusPopover()
+        applyMainWindowLevel()
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func applyMainWindowLevel() {
+        window?.level = settings.keepMainWindowOnTop ? .floating : .normal
+    }
+
+    @objc private func openSettingsFromMenu() {
+        openSettingsWindow()
+    }
+
+    @objc private func showAboutPanel() {
+        NSApp.orderFrontStandardAboutPanel(nil)
+    }
+
+    @objc private func quitFromMenu() {
+        NSApp.terminate(nil)
+    }
+
+    private func setupMainMenu() {
+        let language = settings.language
+        let mainMenu = NSMenu()
+
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+
+        let appMenu = NSMenu(title: "codexU")
+        appMenuItem.submenu = appMenu
+        appMenu.addItem(NSMenuItem(
+            title: language.text("关于 codexU", "About codexU"),
+            action: #selector(showAboutPanel),
+            keyEquivalent: ""
+        ))
+        appMenu.addItem(.separator())
+        appMenu.addItem(NSMenuItem(
+            title: language.text("设置…", "Settings..."),
+            action: #selector(openSettingsFromMenu),
+            keyEquivalent: ","
+        ))
+        appMenu.addItem(.separator())
+
+        let hideItem = NSMenuItem(
+            title: language.text("隐藏 codexU", "Hide codexU"),
+            action: #selector(NSApplication.hide(_:)),
+            keyEquivalent: "h"
+        )
+        hideItem.target = NSApp
+        appMenu.addItem(hideItem)
+
+        let hideOthersItem = NSMenuItem(
+            title: language.text("隐藏其他", "Hide Others"),
+            action: #selector(NSApplication.hideOtherApplications(_:)),
+            keyEquivalent: "h"
+        )
+        hideOthersItem.keyEquivalentModifierMask = [.command, .option]
+        hideOthersItem.target = NSApp
+        appMenu.addItem(hideOthersItem)
+
+        let showAllItem = NSMenuItem(
+            title: language.text("全部显示", "Show All"),
+            action: #selector(NSApplication.unhideAllApplications(_:)),
+            keyEquivalent: ""
+        )
+        showAllItem.target = NSApp
+        appMenu.addItem(showAllItem)
+        appMenu.addItem(.separator())
+        appMenu.addItem(NSMenuItem(
+            title: language.text("退出 codexU", "Quit codexU"),
+            action: #selector(quitFromMenu),
+            keyEquivalent: "q"
+        ))
+
+        let windowMenuItem = NSMenuItem()
+        mainMenu.addItem(windowMenuItem)
+        let windowMenu = NSMenu(title: language.text("窗口", "Window"))
+        windowMenuItem.submenu = windowMenu
+        let minimizeItem = NSMenuItem(
+            title: language.text("最小化", "Minimize"),
+            action: #selector(NSWindow.performMiniaturize(_:)),
+            keyEquivalent: "m"
+        )
+        windowMenu.addItem(minimizeItem)
+        let bringAllItem = NSMenuItem(
+            title: language.text("全部前置", "Bring All to Front"),
+            action: #selector(NSApplication.arrangeInFront(_:)),
+            keyEquivalent: ""
+        )
+        bringAllItem.target = NSApp
+        windowMenu.addItem(bringAllItem)
+        NSApp.windowsMenu = windowMenu
+
+        NSApp.mainMenu = mainMenu
+    }
+
+    private func openSettingsWindow() {
+        closeStatusPopover()
+
+        if settingsWindow == nil {
+            let settingsWindow = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 480, height: 520),
+                styleMask: [.titled, .closable, .miniaturizable],
+                backing: .buffered,
+                defer: false
+            )
+            settingsWindow.title = settings.language.text("设置", "Settings")
+            settingsWindow.isReleasedWhenClosed = false
+            settingsWindow.delegate = self
+            settingsWindow.contentView = NSHostingView(
+                rootView: SettingsPanelView(settings: settings, store: store)
+            )
+            settingsWindow.center()
+            self.settingsWindow = settingsWindow
+        }
+
+        guard let settingsWindow else { return }
+        settingsWindow.title = settings.language.text("设置", "Settings")
+        if settingsWindow.isMiniaturized {
+            settingsWindow.deminiaturize(nil)
+        }
+        settingsWindow.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func observeSettings() {
+        settings.$keepMainWindowOnTop
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.applyMainWindowLevel()
+                self?.updateStatusItemTooltip()
+            }
+            .store(in: &cancellables)
+
+        settings.$language
+            .receive(on: RunLoop.main)
+            .sink { [weak self] language in
+                self?.settingsWindow?.title = language.text("设置", "Settings")
+                self?.setupMainMenu()
+            }
+            .store(in: &cancellables)
+
     }
 
     @objc private func statusItemClicked() {
@@ -5957,7 +6350,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func toggleStatusPopover() {
         if statusPopover?.isShown == true {
-            statusPopover?.performClose(nil)
+            closeStatusPopover()
             return
         }
 
@@ -5965,15 +6358,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let popover = NSPopover()
         popover.behavior = .transient
         popover.animates = true
-        popover.contentSize = CGSize(width: 380, height: 372)
+        popover.contentSize = CGSize(width: 380, height: 426)
+        popover.delegate = self
         popover.contentViewController = NSHostingController(
             rootView: RuntimeStatusMenuView(
                 store: store,
+                settings: settings,
                 openRuntime: { [weak self] scope in
                     self?.openMainWindow(selecting: scope)
                 },
                 openCurrent: { [weak self] in
                     self?.openMainWindow(selecting: nil)
+                },
+                openSettings: { [weak self] in
+                    self?.openSettingsWindow()
                 },
                 quit: {
                     NSApp.terminate(nil)
@@ -5982,38 +6380,293 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
         statusPopover = popover
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        configureStatusPopoverWindow()
+        DispatchQueue.main.async { [weak self] in
+            self?.configureStatusPopoverWindow()
+        }
+        installStatusPopoverEventMonitors()
+    }
+
+    private func configureStatusPopoverWindow() {
+        guard let window = statusPopover?.contentViewController?.view.window else { return }
+        window.level = .statusBar
+        window.collectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .transient,
+            .ignoresCycle
+        ]
     }
 
     private func openMainWindow(selecting scope: RuntimeScope?) {
         if let scope {
             store.selectRuntime(scope)
         }
+        showMainWindow()
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        statusPopover = nil
+        removeStatusPopoverEventMonitors()
+    }
+
+    private func closeStatusPopover() {
         statusPopover?.performClose(nil)
-        window?.moveToFrontLayer()
-        isFrontMode = true
+        statusPopover = nil
+        removeStatusPopoverEventMonitors()
+    }
+
+    private func installStatusPopoverEventMonitors() {
+        removeStatusPopoverEventMonitors()
+        let mouseEvents: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+
+        if let localMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseEvents.union(.keyDown), handler: { [weak self] event in
+            guard let self else { return event }
+            if event.type == .keyDown, event.keyCode == 53 {
+                self.closeStatusPopover()
+                return nil
+            }
+            if self.shouldCloseStatusPopover(for: event) {
+                self.closeStatusPopover()
+            }
+            return event
+        }) {
+            statusPopoverEventMonitors.append(localMonitor)
+        }
+
+        if let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mouseEvents, handler: { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.closeStatusPopover()
+            }
+        }) {
+            statusPopoverEventMonitors.append(globalMonitor)
+        }
+    }
+
+    private func shouldCloseStatusPopover(for event: NSEvent) -> Bool {
+        guard event.type == .leftMouseDown || event.type == .rightMouseDown || event.type == .otherMouseDown else {
+            return false
+        }
+        if let popoverWindow = statusPopover?.contentViewController?.view.window, event.window === popoverWindow {
+            return false
+        }
+        if let statusButtonWindow = statusItem?.button?.window, event.window === statusButtonWindow {
+            return false
+        }
+        return true
+    }
+
+    private func removeStatusPopoverEventMonitors() {
+        for monitor in statusPopoverEventMonitors {
+            NSEvent.removeMonitor(monitor)
+        }
+        statusPopoverEventMonitors.removeAll()
     }
 
     private func setupStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        let item = NSStatusBar.system.statusItem(withLength: statusItemUsageSize.width + 8)
         statusItem = item
 
         guard let button = item.button else { return }
-        if let image = NSImage(systemSymbolName: "gauge.with.dots.needle.67percent", accessibilityDescription: "codexU") {
-            image.isTemplate = true
-            button.image = image
-        } else {
-            button.title = "C"
-        }
-        updateStatusItemTooltip()
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleNone
+        updateStatusItem()
         button.target = self
         button.action = #selector(statusItemClicked)
     }
 
+    private func observeStatusItemUsage() {
+        store.$multiRuntimeSnapshot
+            .combineLatest(store.$selectedRuntimeScope, store.$isRefreshing)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _, _, _ in
+                self?.updateStatusItem()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func updateStatusItem() {
+        guard let button = statusItem?.button else { return }
+        statusItem?.length = statusItemUsageSize.width + 8
+        button.image = makeStatusItemUsageImage()
+        updateStatusItemTooltip()
+    }
+
     private func updateStatusItemTooltip() {
         guard let button = statusItem?.button else { return }
-        button.toolTip = windowState.isPinnedToFront
-            ? "codexU：已固定前台，点击或按 ⌘U 取消固定"
-            : "codexU：点击查看 Runtime 用量菜单，快捷键 ⌘U"
+        let summary = selectedRuntimeSummary()
+        let quotaText = "\(summary?.displayName ?? store.selectedRuntimeScope.displayName) · 5h \(statusItemPercentText(summary?.fiveHourRemainingPercent)) · 7d \(statusItemPercentText(summary?.sevenDayRemainingPercent))"
+        button.toolTip = settings.keepMainWindowOnTop
+            ? "codexU：主窗口已置顶，点击查看 Runtime 用量菜单，快捷键 ⌘U"
+            : "codexU：已用 \(quotaText)，点击查看 Runtime 用量菜单，快捷键 ⌘U"
+    }
+
+    private func selectedRuntimeSummary() -> RuntimeMenuSummary? {
+        store.runtimeSnapshot(for: store.selectedRuntimeScope)?.summary
+    }
+
+    private func makeStatusItemUsageImage() -> NSImage {
+        let summary = selectedRuntimeSummary()
+        let image = NSImage(size: statusItemUsageSize)
+        image.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+
+        let rect = NSRect(origin: .zero, size: statusItemUsageSize)
+        NSColor.black.withAlphaComponent(0.24).setFill()
+        NSBezierPath(roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 11, yRadius: 11).fill()
+
+        drawStatusItemRuntimeLogo(summary?.scope ?? store.selectedRuntimeScope)
+        drawStatusItemQuotaRow(
+            label: "5h",
+            usedPercent: statusItemUsedPercent(summary?.fiveHourRemainingPercent),
+            resetText: statusItemResetCountdown(summary?.fiveHourResetsAt),
+            y: 11.3
+        )
+        drawStatusItemQuotaRow(
+            label: "7d",
+            usedPercent: statusItemUsedPercent(summary?.sevenDayRemainingPercent),
+            resetText: statusItemResetCountdown(summary?.sevenDayResetsAt),
+            y: 1.2
+        )
+
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
+    }
+
+    private func drawStatusItemRuntimeLogo(_ scope: RuntimeScope) {
+        let rect = NSRect(x: 5, y: 4, width: 14, height: 14)
+        if let image = statusItemRuntimeLogo(for: scope) {
+            image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            return
+        }
+
+        drawStatusItemText(
+            scope == .codex ? "C" : "A",
+            in: NSRect(x: 5, y: 4.2, width: 14, height: 12),
+            font: .systemFont(ofSize: 9, weight: .bold),
+            color: .white,
+            alignment: .center
+        )
+    }
+
+    private func drawStatusItemQuotaRow(label: String, usedPercent: Double?, resetText: String, y: CGFloat) {
+        let labelColor = NSColor.white.withAlphaComponent(0.92)
+        let valueColor = usedPercent == nil ? NSColor.white.withAlphaComponent(0.48) : labelColor
+        let trackColor = NSColor.white.withAlphaComponent(0.22)
+        let fillColor = statusItemProgressColor(for: usedPercent)
+
+        drawStatusItemText(
+            label,
+            in: NSRect(x: 22, y: y - 1.0, width: 17, height: 11),
+            font: .monospacedDigitSystemFont(ofSize: 8.2, weight: .semibold),
+            color: labelColor,
+            alignment: .right
+        )
+
+        let barRect = NSRect(x: 45, y: y + 2.2, width: 23, height: 4.0)
+        trackColor.setFill()
+        NSBezierPath(roundedRect: barRect, xRadius: 2, yRadius: 2).fill()
+        if let usedPercent {
+            let progress = max(0, min(1, usedPercent / 100))
+            if progress > 0 {
+                let fillWidth = max(1.2, barRect.width * CGFloat(progress))
+                let fillRect = NSRect(x: barRect.minX, y: barRect.minY, width: fillWidth, height: barRect.height)
+                fillColor.setFill()
+                NSBezierPath(roundedRect: fillRect, xRadius: 2, yRadius: 2).fill()
+            }
+        }
+
+        drawStatusItemText(
+            statusItemPercentTextFromUsed(usedPercent),
+            in: NSRect(x: 70, y: y - 1.0, width: 24, height: 11),
+            font: .monospacedDigitSystemFont(ofSize: 8.2, weight: .semibold),
+            color: valueColor,
+            alignment: .right
+        )
+        drawStatusItemText(
+            resetText,
+            in: NSRect(x: 98, y: y - 1.0, width: 15, height: 11),
+            font: .monospacedDigitSystemFont(ofSize: 7.7, weight: .medium),
+            color: NSColor.white.withAlphaComponent(0.64),
+            alignment: .left
+        )
+    }
+
+    private func drawStatusItemText(
+        _ text: String,
+        in rect: NSRect,
+        font: NSFont,
+        color: NSColor,
+        alignment: NSTextAlignment
+    ) {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = alignment
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: color,
+            .paragraphStyle: paragraphStyle
+        ]
+        text.draw(with: rect, options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attributes)
+    }
+
+    private func statusItemUsedPercent(_ remainingPercent: Double?) -> Double? {
+        guard let remainingPercent else { return nil }
+        return max(0, min(100, 100 - remainingPercent))
+    }
+
+    private func statusItemPercentText(_ remainingPercent: Double?) -> String {
+        statusItemPercentTextFromUsed(statusItemUsedPercent(remainingPercent))
+    }
+
+    private func statusItemPercentTextFromUsed(_ usedPercent: Double?) -> String {
+        guard let usedPercent else { return "--" }
+        return "\(Int(usedPercent.rounded()))%"
+    }
+
+    private func statusItemProgressColor(for usedPercent: Double?) -> NSColor {
+        guard let usedPercent else {
+            return NSColor.white.withAlphaComponent(0.30)
+        }
+        switch usedPercent {
+        case ..<50:
+            return NSColor.systemGreen
+        case ..<75:
+            return NSColor.systemYellow
+        case ..<90:
+            return NSColor.systemOrange
+        default:
+            return NSColor.systemRed
+        }
+    }
+
+    private func statusItemResetCountdown(_ date: Date?) -> String {
+        guard let date else { return "--" }
+        let seconds = max(0, Int(date.timeIntervalSinceNow.rounded(.down)))
+        let days = seconds / 86_400
+        let hours = (seconds % 86_400) / 3_600
+        let minutes = (seconds % 3_600) / 60
+        if days > 0 {
+            return "\(days)d"
+        }
+        if hours > 0 {
+            return "\(hours)h"
+        }
+        return "\(minutes)m"
+    }
+
+    private func statusItemRuntimeLogo(for scope: RuntimeScope) -> NSImage? {
+        let name: String
+        switch scope {
+        case .codex:
+            name = "codex-color"
+        case .claudeCode:
+            name = "claudecode-color"
+        }
+        guard let url = Bundle.main.url(forResource: name, withExtension: "png") else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
     }
 
     private func registerGlobalHotKey() {
@@ -6029,7 +6682,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 guard let userData else { return noErr }
                 let delegate = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
                 DispatchQueue.main.async {
-                    delegate.toggleWindowLayer()
+                    delegate.toggleMainWindow()
                 }
                 return noErr
             },

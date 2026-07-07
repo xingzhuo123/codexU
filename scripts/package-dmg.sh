@@ -52,11 +52,11 @@ ${DISPLAY_NAME} ${VERSION}
 - Codex 至少使用过一次，以便生成 ~/.codex/state_5.sqlite。
 
 权限:
-- 全局快捷键 Command + U 用于唤起/收起。
-- 菜单栏图标也可以用于切换前台/桌面层。
+- 全局快捷键 Command + U 用于显示/隐藏主窗口。
+- 菜单栏图标可以打开 Runtime 浮窗、主窗口、设置或退出应用。
 
 隐私:
-- 本应用只读取本机 Codex app-server 和 ~/.codex 的本地统计数据。
+- 本应用只读取本机 Codex app-server、~/.codex 和可选 ~/.claude 的本地统计数据。
 - 不读取认证 token，不上传数据。
 README
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.0-beta - 2026-07-08
+
+- 将主界面升级为标准 macOS App 窗口，支持 Dock、系统红黄绿窗口控制、最小化，以及关闭主窗口后继续在菜单栏运行。
+- 保留菜单栏状态项，并增强 Runtime 浮窗：新增设置入口，支持打开主窗口、打开设置和退出。
+- `Command + U` 调整为显示/隐藏主窗口；窗口最小化时会恢复并唤到前台。
+- 菜单栏浮窗支持在其他全屏 App 的当前 Space 中展示。
+- 新增设置窗口，集中管理语言、外观、主窗口置顶和关闭行为；语言、主题和 PRO 状态不再常驻主窗口顶部。
+- 恢复主窗口 Liquid Glass 材质和半透明质感，并优化标题栏工具区、窗口圆角、顶部间距和按钮尺寸。
+- 新增 Codex 与 Claude Code 彩色 Runtime 图标资源，统一主窗口、菜单栏浮窗和 Runtime 切换控件的视觉。
+- 更新 README 截图、安装说明和源码构建示例。
+
 ## 0.4.0 - 2026-07-07
 
 - Added a multi-runtime usage architecture with Codex and Claude Code providers.

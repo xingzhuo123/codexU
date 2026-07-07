@@ -2,9 +2,11 @@
 
 [English](README.en.md)
 
-codexU 是一个 macOS 桌面小组件，用来查看 OpenAI Codex / ChatGPT Codex 和 Claude Code 的额度窗口、token 用量和今日任务状态。它把常用信息放在桌面上，帮助你快速判断剩余额度、重置时间和当天工作进展。
+codexU 是一个 macOS 菜单栏与桌面应用，用来查看 OpenAI Codex / ChatGPT Codex 和 Claude Code 的额度窗口、token 用量和今日任务状态。它把常用信息放在菜单栏和主窗口里，帮助你快速判断剩余额度、重置时间和当天工作进展。
 
 ## 界面截图
+
+![codexU 菜单栏 Runtime 浮窗](docs/screenshot-v1.0.0-beta-menu-popover.png)
 
 ![codexU 今日任务视图](docs/screenshot-v0.3.0-today.png)
 
@@ -34,9 +36,9 @@ codexU 是一个 macOS 桌面小组件，用来查看 OpenAI Codex / ChatGPT Cod
 - 展示最近半年的每日 token 热力图、最近 7 日趋势摘要和同周期变化。
 - 展示最近 7 天与全部项目排行，包含 token、估算价值、线程数和最近活跃时间。
 - 展示工具调用 TOP 列表和 Skill 使用 TOP 列表，帮助判断本地 Codex 工作结构。
-- 默认贴在桌面层，支持 `Command + U` 一键临时唤到前台，失焦后自动回到桌面层；也可用顶部图钉固定前台。
-- 支持中文和英文界面，可根据系统时区自动选择，也可通过顶部 `中 | EN` 手动切换。
-- 支持自动、浅色和深色外观模式，默认跟随系统设置，也可通过顶部外观切换手动指定。
+- 以标准 macOS 窗口运行，支持 Dock、系统窗口控制、最小化和关闭主窗口后继续在菜单栏运行。
+- 支持 `Command + U` 显示或隐藏主窗口；菜单栏 Runtime 菜单也可以快速打开主窗口、设置或退出。
+- 设置窗口支持中文/英文界面、自动/浅色/深色外观、主窗口置顶和关闭行为配置。
 - 本地读取数据，不上传 usage、线程或账户数据到第三方服务。
 
 ## 羊毛进度
@@ -52,18 +54,16 @@ API 等效价值 =
 + 输出 tokens / 1,000,000 * 模型输出单价
 ```
 
-其中 `未缓存输入 tokens = 输入 tokens - 缓存输入 tokens`，缓存输入按不超过输入 tokens 的数量计入。本月羊毛进度会累计当月所有本机 session 的 API 等效价值。进度条的满额终点使用 `2 亿 tokens/天 * 30 天` 估算，并按 30% 未缓存输入、50% 缓存输入、20% 输出的参考 token mix 折算；当前参考价约为 `$7.75 / 1M tokens`，满额月价值约 `$46,500`。该金额只是基于 API 价格的等效估算，不代表实际账单或官方返现金额。
+其中 `未缓存输入 tokens = 输入 tokens - 缓存输入 tokens`，缓存输入按不超过输入 tokens 的数量计入。本月羊毛进度会累计当月所有本机 session 的 API 等效价值。进度条的满额终点使用 `2 亿 tokens/天 * 30 天` 估算，并按 30% 未缓存输入、50% 缓存输入、20% 输出的参考 token mix 折算；当前参考价约为 `$7.75 / 1M tokens`，满额月价值约 `$46,500`。进度条采用分段非线性刻度：Plus / Pro 节点保留在前段，超过 Pro 200 后用对数比例映射到满额终点，因此条宽用于扫视阶段进展，不等同于线性美元占比。该金额只是基于 API 价格的等效估算，不代表实际账单或官方返现金额。
 
 ## 快捷键和操作
 
-- `Command + U`：临时将小组件从桌面层唤到前台；前台态下再次按下会回到桌面层，失焦后也会自动回到桌面层。
+- `Command + U`：显示或隐藏主窗口；如果窗口已最小化，会恢复并唤到前台。
 - 菜单栏仪表图标：点击后打开 Runtime 菜单；点击 Codex 或 Claude Code 卡片会打开主界面并切到对应 Runtime。
-- 顶部图钉按钮：固定或取消固定前台；默认未开启，开启后失焦也会保持在前台。
-- 顶部外观切换：在自动、浅色和深色模式之间切换；自动模式跟随系统设置。
-- 顶部 `中 | EN`：切换中文或英文界面，手动选择会在下次启动时保留。
-- 右上角刷新按钮：立即刷新额度、token 统计、趋势图和任务看板。
-- 右上角关闭按钮：退出 codexU。
-- 拖动小组件背景：移动小组件位置。
+- 菜单栏 Runtime 菜单：展示 Codex / Claude Code 快速状态，并提供打开主窗口、打开设置和退出。
+- 设置窗口：配置语言、外观、主窗口置顶，以及关闭主窗口后是否继续在菜单栏运行。
+- 主窗口顶部刷新按钮：立即刷新额度、token 统计、趋势图和任务看板。
+- 系统红黄绿窗口按钮：关闭、最小化或缩放主窗口；退出请使用菜单栏 Runtime 菜单或 App 菜单。
 
 ## 首次安装：隐私与安全
 
@@ -140,10 +140,10 @@ make release-all
 产物会写入 `dist/`，例如：
 
 ```text
-dist/codexU-0.3.0-mac-arm64.dmg
-dist/codexU-0.3.0-mac-arm64.dmg.sha256
-dist/codexU-0.3.0-mac-x86_64.dmg
-dist/codexU-0.3.0-mac-x86_64.dmg.sha256
+dist/codexU-1.0.0-beta-mac-arm64.dmg
+dist/codexU-1.0.0-beta-mac-arm64.dmg.sha256
+dist/codexU-1.0.0-beta-mac-x86_64.dmg
+dist/codexU-1.0.0-beta-mac-x86_64.dmg.sha256
 ```
 
 Developer ID 签名和 Apple notarization 流程见 [DISTRIBUTION.md](DISTRIBUTION.md)。

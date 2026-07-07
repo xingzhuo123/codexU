@@ -1,8 +1,8 @@
 # codexU
 
-codexU is a macOS desktop widget for tracking OpenAI Codex / ChatGPT Codex and Claude Code quota, token usage, and today's task status. It keeps the information you check most on the desktop, so you can quickly see remaining quota, reset times, and daily work progress.
+codexU is a macOS menu bar and desktop app for tracking OpenAI Codex / ChatGPT Codex and Claude Code quota, token usage, and today's task status. It keeps the information you check most in the menu bar and main window, so you can quickly see remaining quota, reset times, and daily work progress.
 
-![codexU desktop widget screenshot](docs/screenshot-0.2.0.png)
+![codexU menu bar runtime popover](docs/screenshot-v1.0.0-beta-menu-popover.png)
 
 ## Who It Is For
 
@@ -18,27 +18,25 @@ codexU is a macOS desktop widget for tracking OpenAI Codex / ChatGPT Codex and C
 - Adds a top-level `Codex | Claude Code` switch in the main widget so all panels can switch runtime scope manually.
 - Supports Claude Code local transcript usage, 7-day trends, project rankings, top tools/Skills, and a basic task board.
 - Summarizes token usage for today, the last 7 days, and lifetime totals with uncached input, cached input, and output splits.
-- Estimates the current month's API-equivalent value from OpenAI API token prices and shows progress against Plus, Pro 100, Pro 200, and the full monthly quota value.
+- Estimates the current month's API-equivalent value from OpenAI API token prices and shows progress against Plus, Pro 100, Pro 200, and the full monthly quota value. The bar uses a segmented nonlinear scale, so movement past Pro 200 remains visible and is not a linear dollar ratio.
 - Adds lower dashboard tabs for today's tasks, usage trend, project ranking, and Skill usage.
 - Builds a daily task board from local Codex threads and enabled Codex automations, grouped into active, pending, scheduled, and done columns.
 - Shows a six-month daily token heatmap, a last-7-day trend summary, and previous-period comparison.
 - Shows recent and all-time project rankings with tokens, estimated value, thread counts, and recent activity.
 - Shows top tool calls and top Skill usage to explain the structure of local Codex work.
-- Stays on the desktop layer by default, with `Command + U` temporary foreground access that returns to the desktop layer on focus loss, plus a top pin button for always-on-top mode.
-- Supports Chinese and English UI text. The default language follows the system time zone, and the top `中 | EN` switch can override it.
-- Supports system, light, and dark appearance modes. The default follows macOS, and the top appearance switch can override it.
+- Runs as a standard macOS window with Dock, system window controls, minimization, and a menu bar item that can keep running after the main window is closed.
+- Supports `Command + U` to show or hide the main window. The menu bar runtime menu can also open the main window, open settings, or quit.
+- Includes a Settings window for Chinese/English UI text, system/light/dark appearance, always-on-top behavior, and close-window behavior.
 - Reads data locally and does not upload usage, threads, or account data to a third-party service.
 
 ## Keyboard Shortcuts
 
-- `Command + U`: temporarily bring the widget from the desktop layer to the foreground; press again while foregrounded to return it to the desktop layer, or let it return automatically on focus loss.
+- `Command + U`: show or hide the main window. If the window is minimized, the shortcut restores it and brings it forward.
 - Menu bar gauge icon: opens the runtime menu. Clicking a Codex or Claude Code card opens the main widget with that runtime selected.
-- Top pin button: pin or unpin the widget in the foreground. It is off by default; when enabled, the widget stays in front after focus loss.
-- Top appearance switch: switch between system, light, and dark modes. System mode follows macOS.
-- Top `中 | EN` switch: switch between Chinese and English. Manual selection is kept for the next launch.
-- Refresh button: immediately refresh quota, token usage, trend, and task board.
-- Close button: quit the widget.
-- Drag anywhere on the widget background to reposition it.
+- Menu bar runtime menu: shows quick Codex / Claude Code status and provides Open, Settings, and Quit actions.
+- Settings window: configure language, appearance, always-on-top behavior, and whether closing the main window keeps the menu bar item running.
+- Main-window refresh button: immediately refresh quota, token usage, trend, and task board.
+- System window controls: close, minimize, or zoom the main window. Quit from the menu bar runtime menu or the app menu.
 
 ## First Install: Privacy & Security
 
@@ -115,10 +113,10 @@ make release-all
 Release artifacts are written to `dist/`, for example:
 
 ```text
-dist/codexU-0.3.0-mac-arm64.dmg
-dist/codexU-0.3.0-mac-arm64.dmg.sha256
-dist/codexU-0.3.0-mac-x86_64.dmg
-dist/codexU-0.3.0-mac-x86_64.dmg.sha256
+dist/codexU-1.0.0-beta-mac-arm64.dmg
+dist/codexU-1.0.0-beta-mac-arm64.dmg.sha256
+dist/codexU-1.0.0-beta-mac-x86_64.dmg
+dist/codexU-1.0.0-beta-mac-x86_64.dmg.sha256
 ```
 
 For Developer ID signing and notarization, see [DISTRIBUTION.md](DISTRIBUTION.md).
@@ -136,7 +134,7 @@ For Developer ID signing and notarization, see [DISTRIBUTION.md](DISTRIBUTION.md
 - Claude Code tools, Skills, and tasks: transcript `tool_use.name` / explicit Skill attribution, plus `~/.claude/tasks/**/*.json`.
 - Claude Code active quota: optional `~/Library/Caches/codexU/claude-code/statusline-snapshot.json`; without it, 5-hour and 7-day quota show `--`.
 
-Current Codex quota APIs expose rolling-window percentages and reset times, not absolute account quota sizes. Claude Code v0.4.0 reads local history and an optional active snapshot; it is not a Claude.ai official billing view. See [RESEARCH.md](RESEARCH.md) for the data model and fallback behavior.
+Current Codex quota APIs expose rolling-window percentages and reset times, not absolute account quota sizes. Claude Code support reads local history and an optional active snapshot; it is not a Claude.ai official billing view. See [RESEARCH.md](RESEARCH.md) for the data model and fallback behavior.
 
 ## FAQ
 

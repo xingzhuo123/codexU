@@ -24,3 +24,6 @@ xcuserdata/
 *.dmg
 *.pkg
 *.zip
+
+# dev context
+requirements/

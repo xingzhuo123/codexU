@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RuntimeSelector: View {
+    @Environment(\.colorScheme) private var colorScheme
     let selected: RuntimeScope
     let language: WidgetLanguage
     let onSelect: (RuntimeScope) -> Void
@@ -11,17 +12,20 @@ struct RuntimeSelector: View {
                 Button {
                     onSelect(scope)
                 } label: {
-                    Text(label(for: scope))
-                        .font(.system(size: 11, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                        .foregroundStyle(selected == scope ? .primary : .secondary)
-                        .frame(minWidth: scope == .claudeCode ? 86 : 54, minHeight: 26)
-                        .padding(.horizontal, 6)
-                        .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(selected == scope ? Color.primary.opacity(0.1) : Color.clear)
-                        )
+                    HStack(spacing: 5) {
+                        RuntimeLogoView(scope: scope, size: 15)
+                        Text(label(for: scope))
+                            .font(.system(size: 11, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
+                    .foregroundStyle(selected == scope ? .primary : .secondary)
+                    .frame(minWidth: scope == .claudeCode ? 112 : 78, minHeight: 24)
+                    .padding(.horizontal, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(selected == scope ? WidgetPalette.controlSelectedFill(colorScheme) : Color.clear)
+                    )
                 }
                 .buttonStyle(.plain)
                 .help(label(for: scope))
@@ -30,10 +34,10 @@ struct RuntimeSelector: View {
         .padding(3)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(RuntimeViewPalette.controlFill)
+                .fill(WidgetPalette.controlFill(colorScheme))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+                        .strokeBorder(WidgetPalette.controlStroke(colorScheme), lineWidth: 0.8)
                 )
         )
     }
@@ -49,17 +53,20 @@ struct RuntimeSelector: View {
 }
 
 struct RuntimeStatusMenuView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var store: UsageStore
+    @ObservedObject var settings: AppSettings
     let openRuntime: (RuntimeScope) -> Void
     let openCurrent: () -> Void
+    let openSettings: () -> Void
     let quit: () -> Void
 
-    @State private var language = WidgetLanguage.storedOrAutomatic()
+    private var language: WidgetLanguage { settings.language }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            VStack(spacing: 8) {
+            VStack(spacing: 9) {
                 ForEach(RuntimeScope.allCases) { scope in
                     RuntimeSummaryCard(
                         summary: summary(for: scope),
@@ -74,7 +81,7 @@ struct RuntimeStatusMenuView: View {
             footer
         }
         .padding(14)
-        .frame(width: 380)
+        .frame(width: 380, height: 426, alignment: .top)
     }
 
     private var header: some View {
@@ -122,29 +129,50 @@ struct RuntimeStatusMenuView: View {
         .padding(.vertical, 9)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.055))
+                .fill(WidgetPalette.controlFill(colorScheme))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(WidgetPalette.controlStroke(colorScheme), lineWidth: 0.8)
+                )
         )
     }
 
     private var footer: some View {
         HStack(spacing: 8) {
-            Button {
-                openCurrent()
-            } label: {
-                Label(language.text("打开主界面", "Open"), systemImage: "rectangle.on.rectangle")
-                    .font(.system(size: 11, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-            }
-            Button {
-                quit()
-            } label: {
-                Label(language.text("退出", "Quit"), systemImage: "power")
-                    .font(.system(size: 11, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-            }
+            menuCommandButton(
+                title: language.text("打开主界面", "Open"),
+                systemName: "rectangle.on.rectangle",
+                action: openCurrent
+            )
+            menuCommandButton(
+                title: language.text("设置", "Settings"),
+                systemName: "gearshape",
+                action: openSettings
+            )
+            menuCommandButton(
+                title: language.text("退出", "Quit"),
+                systemName: "power",
+                action: quit
+            )
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
+    }
+
+    private func menuCommandButton(title: String, systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemName)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, minHeight: 32)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(WidgetPalette.controlFill(colorScheme))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(WidgetPalette.controlStroke(colorScheme), lineWidth: 0.8)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private func summary(for scope: RuntimeScope) -> RuntimeMenuSummary {
@@ -163,6 +191,7 @@ struct RuntimeStatusMenuView: View {
 }
 
 struct RuntimeSummaryCard: View {
+    @Environment(\.colorScheme) private var colorScheme
     let summary: RuntimeMenuSummary
     let isSelected: Bool
     let language: WidgetLanguage
@@ -172,8 +201,10 @@ struct RuntimeSummaryCard: View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 9) {
                 HStack(alignment: .center, spacing: 8) {
+                    RuntimeLogoView(scope: summary.scope, size: 24)
                     Text(summary.displayName)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary)
                     Spacer()
                     Text(summary.status.localized(language))
                         .font(.system(size: 10, weight: .bold))
@@ -214,14 +245,16 @@ struct RuntimeSummaryCard: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, minHeight: 102, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
+            .frame(maxWidth: .infinity, minHeight: 118, maxHeight: 118, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.045))
+                    .fill(isSelected ? selectedFill : WidgetPalette.cardFill(colorScheme))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(isSelected ? Color.accentColor.opacity(0.36) : Color.primary.opacity(0.08), lineWidth: 0.9)
+                            .strokeBorder(isSelected ? selectedStroke : WidgetPalette.cardStroke(colorScheme), lineWidth: 0.9)
                     )
             )
         }
@@ -240,7 +273,7 @@ struct RuntimeSummaryCard: View {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule(style: .continuous)
-                        .fill(Color.primary.opacity(0.08))
+                        .fill(WidgetPalette.surfaceTrack)
                     Capsule(style: .continuous)
                         .fill(statusTint.opacity(0.72))
                         .frame(width: proxy.size.width * CGFloat(max(0, min(100, value ?? 0)) / 100))
@@ -257,14 +290,22 @@ struct RuntimeSummaryCard: View {
     private var statusTint: Color {
         switch summary.status {
         case .available:
-            return RuntimeViewPalette.statusSuccess
+            return WidgetPalette.statusSuccess
         case .localOnly, .snapshotNeeded:
-            return RuntimeViewPalette.statusWarning
+            return WidgetPalette.statusWarning
         case .stale:
-            return RuntimeViewPalette.statusInfo
+            return WidgetPalette.statusInfo
         case .unavailable:
-            return RuntimeViewPalette.statusDanger
+            return WidgetPalette.statusDanger
         }
+    }
+
+    private var selectedFill: Color {
+        WidgetPalette.brandPrimary.opacity(colorScheme == .dark ? 0.20 : 0.12)
+    }
+
+    private var selectedStroke: Color {
+        WidgetPalette.brandPrimary.opacity(colorScheme == .dark ? 0.42 : 0.34)
     }
 
     private var localizedSourceLabel: String {
@@ -282,6 +323,61 @@ struct RuntimeSummaryCard: View {
         case .claudeCode:
             return summary.fiveHourRemainingPercent == nil ? "Local records; quota needs active snapshot" : "Active snapshot + local records"
         }
+    }
+}
+
+struct RuntimeLogoView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let scope: RuntimeScope
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let image = RuntimeLogo.image(for: scope) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: fallbackSystemName)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(size * 0.18)
+                    .foregroundStyle(.secondary)
+                    .background(WidgetPalette.controlFill(colorScheme))
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: max(4, size * 0.22), style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: max(4, size * 0.22), style: .continuous)
+                .strokeBorder(WidgetPalette.cardStroke(colorScheme), lineWidth: 0.7)
+        )
+        .accessibilityHidden(true)
+    }
+
+    private var fallbackSystemName: String {
+        switch scope {
+        case .codex:
+            return "terminal"
+        case .claudeCode:
+            return "curlybraces"
+        }
+    }
+}
+
+private enum RuntimeLogo {
+    static func image(for scope: RuntimeScope) -> NSImage? {
+        let name: String
+        switch scope {
+        case .codex:
+            name = "codex-color"
+        case .claudeCode:
+            name = "claudecode-color"
+        }
+        guard let url = Bundle.main.url(forResource: name, withExtension: "png") else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
     }
 }
 
@@ -309,12 +405,4 @@ private func runtimeTimeOnly(_ date: Date) -> String {
     let formatter = DateFormatter()
     formatter.dateFormat = "HH:mm"
     return formatter.string(from: date)
-}
-
-private enum RuntimeViewPalette {
-    static let controlFill = Color.primary.opacity(0.045)
-    static let statusSuccess = Color(red: 0.05, green: 0.55, blue: 0.32)
-    static let statusWarning = Color(red: 0.72, green: 0.45, blue: 0.08)
-    static let statusInfo = Color(red: 0.20, green: 0.38, blue: 0.76)
-    static let statusDanger = Color(red: 0.78, green: 0.20, blue: 0.22)
 }
