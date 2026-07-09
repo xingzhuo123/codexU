@@ -8,6 +8,7 @@ final class AppUpdateStore: ObservableObject {
 
     private let settings: AppSettings
     private let checker: GitHubReleaseUpdateChecker
+    private var cancellables = Set<AnyCancellable>()
 
     init(
         settings: AppSettings,
@@ -15,9 +16,14 @@ final class AppUpdateStore: ObservableObject {
     ) {
         self.settings = settings
         self.checker = checker
+        observeSettings()
     }
 
     func startAutomaticCheck() {
+        guard settings.automaticUpdateChecksEnabled else {
+            result = disabledResult()
+            return
+        }
         check(force: false)
     }
 
@@ -84,5 +90,32 @@ final class AppUpdateStore: ObservableObject {
             return
         }
         result = nextResult
+    }
+
+    private func observeSettings() {
+        settings.$automaticUpdateChecksEnabled
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                if enabled {
+                    self.startAutomaticCheck()
+                } else {
+                    self.isChecking = false
+                    self.result = self.disabledResult()
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    private func disabledResult() -> AppUpdateResult {
+        AppUpdateResult(
+            status: .disabled,
+            checkedAt: Date(),
+            currentVersion: AppVersion.current(),
+            latestRelease: result.latestRelease,
+            preferredAsset: result.preferredAsset,
+            errorMessage: nil
+        )
     }
 }
