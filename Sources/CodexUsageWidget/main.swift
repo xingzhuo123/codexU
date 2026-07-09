@@ -2473,8 +2473,6 @@ final class AppSettings: ObservableObject {
     private static let keepMainWindowOnTopKey = "codexU.keepMainWindowOnTop"
     private static let keepRunningWhenMainWindowClosedKey = "codexU.keepRunningWhenMainWindowClosed"
     private static let visibleRuntimeScopesKey = "codexU.visibleRuntimeScopes"
-    private static let automaticUpdateChecksEnabledKey = "codexU.update.autoCheckEnabled"
-    private static let includePrereleaseUpdatesKey = "codexU.update.includePrereleases"
     private static let skippedUpdateVersionKey = "codexU.update.skippedVersion"
 
     private let defaults: UserDefaults
@@ -2504,18 +2502,6 @@ final class AppSettings: ObservableObject {
         }
     }
 
-    @Published var automaticUpdateChecksEnabled: Bool {
-        didSet {
-            defaults.set(automaticUpdateChecksEnabled, forKey: Self.automaticUpdateChecksEnabledKey)
-        }
-    }
-
-    @Published var includePrereleaseUpdates: Bool {
-        didSet {
-            defaults.set(includePrereleaseUpdates, forKey: Self.includePrereleaseUpdatesKey)
-        }
-    }
-
     @Published private(set) var skippedUpdateVersion: String? {
         didSet {
             if let skippedUpdateVersion {
@@ -2541,16 +2527,6 @@ final class AppSettings: ObservableObject {
             keepRunningWhenMainWindowClosed = true
         } else {
             keepRunningWhenMainWindowClosed = defaults.bool(forKey: Self.keepRunningWhenMainWindowClosedKey)
-        }
-        if defaults.object(forKey: Self.automaticUpdateChecksEnabledKey) == nil {
-            automaticUpdateChecksEnabled = true
-        } else {
-            automaticUpdateChecksEnabled = defaults.bool(forKey: Self.automaticUpdateChecksEnabledKey)
-        }
-        if defaults.object(forKey: Self.includePrereleaseUpdatesKey) == nil {
-            includePrereleaseUpdates = AppVersion(AppVersion.current())?.isPrerelease ?? false
-        } else {
-            includePrereleaseUpdates = defaults.bool(forKey: Self.includePrereleaseUpdatesKey)
         }
         skippedUpdateVersion = defaults.string(forKey: Self.skippedUpdateVersionKey)
         visibleRuntimeScopes = Self.storedVisibleRuntimeScopes(defaults: defaults)
@@ -3261,17 +3237,6 @@ struct SettingsPanelView: View {
                 }
 
                 settingsSection(
-                    title: language.text("更新", "Updates"),
-                    detail: language.text("GitHub Release", "GitHub Releases")
-                ) {
-                    AppUpdateSettingsRows(
-                        settings: settings,
-                        updateStore: updateStore,
-                        language: language
-                    )
-                }
-
-                settingsSection(
                     title: language.text("窗口", "Window"),
                     detail: language.text("主窗口行为", "Main window")
                 ) {
@@ -3297,8 +3262,8 @@ struct SettingsPanelView: View {
                 }
 
                 settingsSection(
-                    title: language.text("账户", "Account"),
-                    detail: language.text("只读状态", "Read only")
+                    title: language.text("系统", "System"),
+                    detail: language.text("状态与更新", "Status")
                 ) {
                     SettingsValueRow(
                         title: language.text("当前 Runtime", "Current runtime"),
@@ -3309,6 +3274,10 @@ struct SettingsPanelView: View {
                         title: language.text("计划状态", "Plan"),
                         detail: language.text("来自本机账户读取结果", "Read from the local account result"),
                         value: planLabel
+                    )
+                    AppUpdateSettingsRows(
+                        updateStore: updateStore,
+                        language: language
                     )
                 }
             }
@@ -6604,7 +6573,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     private var globalHotKeyRef: EventHotKeyRef?
     private var globalHotKeyHandler: EventHandlerRef?
     private var cancellables = Set<AnyCancellable>()
-    private let statusItemUsageSize = NSSize(width: 116, height: 22)
+    private let detailedStatusItemUsageSize = NSSize(width: 116, height: 22)
+    private let compactStatusItemUsageSize = NSSize(width: 22, height: 22)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -6615,6 +6585,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         createMainWindow()
         setupStatusItem()
         observeStatusItemUsage()
+        observeScreenParameters()
         observeSettings()
         registerGlobalHotKey()
         store.updateVisibleRuntimeScopes(settings.visibleRuntimeScopes)
@@ -6819,7 +6790,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
         if settingsWindow == nil {
             let settingsWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 480, height: 690),
+                contentRect: NSRect(x: 0, y: 0, width: 480, height: 620),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false
@@ -7000,7 +6971,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     }
 
     private func setupStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: statusItemUsageSize.width + 8)
+        let item = NSStatusBar.system.statusItem(withLength: statusItemLength)
         statusItem = item
 
         guard let button = item.button else { return }
@@ -7021,10 +6992,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
             .store(in: &cancellables)
     }
 
+    private func observeScreenParameters() {
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateStatusItem()
+            }
+            .store(in: &cancellables)
+    }
+
     private func updateStatusItem() {
         guard let button = statusItem?.button else { return }
-        statusItem?.length = statusItemUsageSize.width + 8
-        button.image = makeStatusItemUsageImage()
+        statusItem?.length = statusItemLength
+        button.image = makeStatusItemImage()
         updateStatusItemTooltip()
     }
 
@@ -7032,26 +7012,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         guard let button = statusItem?.button else { return }
         let summary = selectedRuntimeSummary()
         let quotaText = "\(summary?.displayName ?? store.selectedRuntimeScope.displayName) · 5h \(statusItemPercentText(summary?.fiveHourRemainingPercent)) · 7d \(statusItemPercentText(summary?.sevenDayRemainingPercent))"
-        button.toolTip = settings.keepMainWindowOnTop
-            ? "codexU：主窗口已置顶，点击查看 Runtime 用量菜单，快捷键 ⌘U"
-            : "codexU：已用 \(quotaText)，点击查看 Runtime 用量菜单，快捷键 ⌘U"
+        if settings.keepMainWindowOnTop {
+            button.toolTip = "codexU：主窗口已置顶，点击查看 Runtime 用量菜单，快捷键 ⌘U"
+        } else if usesCompactStatusItemLayout {
+            button.toolTip = "codexU：多屏幕紧凑图标，已用 \(quotaText)，点击查看 Runtime 用量菜单，快捷键 ⌘U"
+        } else {
+            button.toolTip = "codexU：已用 \(quotaText)，点击查看 Runtime 用量菜单，快捷键 ⌘U"
+        }
     }
 
     private func selectedRuntimeSummary() -> RuntimeMenuSummary? {
         store.runtimeSnapshot(for: store.selectedRuntimeScope)?.summary
     }
 
-    private func makeStatusItemUsageImage() -> NSImage {
+    private var usesCompactStatusItemLayout: Bool {
+        NSScreen.screens.count > 1
+    }
+
+    private var statusItemLength: CGFloat {
+        usesCompactStatusItemLayout ? NSStatusItem.squareLength : detailedStatusItemUsageSize.width + 8
+    }
+
+    private func makeStatusItemImage() -> NSImage {
+        usesCompactStatusItemLayout ? makeCompactStatusItemUsageImage() : makeDetailedStatusItemUsageImage()
+    }
+
+    // macOS lays out cloned menu bars independently per display; wide status items can be hidden
+    // on one display while still fitting on another. Use a square item whenever multiple screens exist.
+    private func makeCompactStatusItemUsageImage() -> NSImage {
         let summary = selectedRuntimeSummary()
-        let image = NSImage(size: statusItemUsageSize)
+        let usedPercent = statusItemUsedPercent(summary?.fiveHourRemainingPercent)
+        let image = NSImage(size: compactStatusItemUsageSize)
         image.lockFocus()
         NSGraphicsContext.current?.imageInterpolation = .high
 
-        let rect = NSRect(origin: .zero, size: statusItemUsageSize)
+        let rect = NSRect(origin: .zero, size: compactStatusItemUsageSize)
+        let backgroundRect = rect.insetBy(dx: 1, dy: 1)
+        NSColor.black.withAlphaComponent(0.24).setFill()
+        NSBezierPath(roundedRect: backgroundRect, xRadius: 10, yRadius: 10).fill()
+
+        let center = NSPoint(x: rect.midX, y: rect.midY)
+        let radius: CGFloat = 9.0
+        let trackPath = NSBezierPath()
+        trackPath.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
+        trackPath.lineWidth = 1.35
+        NSColor.white.withAlphaComponent(0.24).setStroke()
+        trackPath.stroke()
+
+        if let usedPercent {
+            let progress = max(0, min(1, usedPercent / 100))
+            if progress > 0 {
+                let progressPath = NSBezierPath()
+                progressPath.appendArc(
+                    withCenter: center,
+                    radius: radius,
+                    startAngle: 90,
+                    endAngle: 90 - 360 * CGFloat(progress),
+                    clockwise: true
+                )
+                progressPath.lineWidth = 1.7
+                progressPath.lineCapStyle = .round
+                statusItemProgressColor(for: usedPercent).setStroke()
+                progressPath.stroke()
+            }
+        }
+
+        drawStatusItemRuntimeLogo(summary?.scope ?? store.selectedRuntimeScope, in: NSRect(x: 6, y: 6, width: 10, height: 10))
+
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
+    }
+
+    private func makeDetailedStatusItemUsageImage() -> NSImage {
+        let summary = selectedRuntimeSummary()
+        let image = NSImage(size: detailedStatusItemUsageSize)
+        image.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+
+        let rect = NSRect(origin: .zero, size: detailedStatusItemUsageSize)
         NSColor.black.withAlphaComponent(0.24).setFill()
         NSBezierPath(roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 11, yRadius: 11).fill()
 
-        drawStatusItemRuntimeLogo(summary?.scope ?? store.selectedRuntimeScope)
+        drawStatusItemRuntimeLogo(summary?.scope ?? store.selectedRuntimeScope, in: NSRect(x: 5, y: 4, width: 14, height: 14))
         drawStatusItemQuotaRow(
             label: "5h",
             usedPercent: statusItemUsedPercent(summary?.fiveHourRemainingPercent),
@@ -7070,8 +7113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         return image
     }
 
-    private func drawStatusItemRuntimeLogo(_ scope: RuntimeScope) {
-        let rect = NSRect(x: 5, y: 4, width: 14, height: 14)
+    private func drawStatusItemRuntimeLogo(_ scope: RuntimeScope, in rect: NSRect) {
         if let image = statusItemRuntimeLogo(for: scope) {
             image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
             return
@@ -7079,8 +7121,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
         drawStatusItemText(
             scope == .codex ? "C" : "A",
-            in: NSRect(x: 5, y: 4.2, width: 14, height: 12),
-            font: .systemFont(ofSize: 9, weight: .bold),
+            in: rect.insetBy(dx: 0, dy: max(0, (rect.height - 12) / 2)),
+            font: .systemFont(ofSize: min(9, rect.height - 2), weight: .bold),
             color: .white,
             alignment: .center
         )

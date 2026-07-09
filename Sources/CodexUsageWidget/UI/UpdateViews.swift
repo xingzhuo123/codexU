@@ -142,27 +142,12 @@ struct AppUpdateMenuRow: View {
 }
 
 struct AppUpdateSettingsRows: View {
-    @ObservedObject var settings: AppSettings
     @ObservedObject var updateStore: AppUpdateStore
     let language: WidgetLanguage
 
     var body: some View {
-        SettingsToggleRow(
-            title: language.text("自动检查更新", "Check automatically"),
-            detail: language.text("每天最多读取一次 GitHub Release", "Reads GitHub Releases at most once per day")
-        ) {
-            SettingsSwitchToggle(isOn: $settings.automaticUpdateChecksEnabled)
-        }
-
-        SettingsToggleRow(
-            title: language.text("接收 beta 版本", "Include beta releases"),
-            detail: language.text("当前 beta 安装默认开启", "Enabled by default for beta installs")
-        ) {
-            SettingsSwitchToggle(isOn: $settings.includePrereleaseUpdates)
-        }
-
         SettingsBaseRow(
-            title: language.text("更新状态", "Update status"),
+            title: language.text("更新检查", "Update check"),
             detail: settingsStatusDetail
         ) {
             HStack(spacing: 8) {
@@ -210,9 +195,9 @@ struct AppUpdateSettingsRows: View {
         case .failed:
             return updateStore.result.errorMessage ?? language.text("暂时无法检查更新", "Unable to check right now")
         case .disabled:
-            return language.text("自动检查关闭后仍可手动检查", "Manual checks still work")
+            return language.text("默认自动检查 GitHub Release", "GitHub Releases are checked automatically")
         case .idle:
-            return language.text("尚未检查 GitHub Release", "GitHub Releases have not been checked yet")
+            return language.text("默认自动检查 GitHub Release，包含 beta 版本", "Checks GitHub Releases automatically, including beta releases")
         }
     }
 }

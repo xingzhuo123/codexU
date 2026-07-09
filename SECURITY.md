@@ -32,7 +32,7 @@ It should not upload local usage, transcript, task, thread, account, or path dat
 
 ## Network Scope
 
-codexU is local-first. The update checker may request public GitHub Release metadata from `https://api.github.com/repos/shanggqm/codexU/releases` when automatic checks are enabled or the user manually checks for updates.
+codexU is local-first. The update checker may request public GitHub Release metadata from `https://api.github.com/repos/shanggqm/codexU/releases` during the default automatic check or when the user manually checks for updates.
 
 Update requests must not include local usage, transcript, task, thread, account, path, prompt, response, tool argument, or tool output data. The update checker may send standard HTTPS headers such as `User-Agent` and `If-None-Match` for ETag caching.
 

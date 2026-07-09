@@ -26,8 +26,8 @@ codexU is a macOS menu bar and desktop app for tracking OpenAI Codex / ChatGPT C
 - Shows top tool calls and top Skill usage to explain the structure of local Codex work.
 - Runs as a standard macOS window with Dock, system window controls, minimization, and a menu bar item that can keep running after the main window is closed.
 - Supports `Command + U` to show or hide the main window. The menu bar runtime menu can also open the main window, open settings, or quit.
-- Includes a Settings window for Chinese/English UI text, system/light/dark appearance, always-on-top behavior, close-window behavior, and update checks.
-- Can check GitHub Releases for newer versions and offer the DMG that matches the current Mac architecture. It does not silently download or install updates.
+- Includes a Settings window for Chinese/English UI text, system/light/dark appearance, always-on-top behavior, close-window behavior, system status, and manual update checks.
+- Checks GitHub Releases for newer versions by default, including beta releases, and offers the DMG that matches the current Mac architecture. It does not silently download or install updates.
 - Reads data locally and does not upload usage, threads, or account data to a third-party service.
 
 ## Keyboard Shortcuts
@@ -35,7 +35,7 @@ codexU is a macOS menu bar and desktop app for tracking OpenAI Codex / ChatGPT C
 - `Command + U`: show or hide the main window. If the window is minimized, the shortcut restores it and brings it forward.
 - Menu bar gauge icon: opens the runtime menu. Clicking a Codex or Claude Code card opens the main widget with that runtime selected.
 - Menu bar runtime menu: shows quick Codex / Claude Code status and provides Open, Settings, and Quit actions.
-- Settings window: configure language, appearance, always-on-top behavior, whether closing the main window keeps the menu bar item running, and whether codexU checks GitHub Releases for updates automatically.
+- Settings window: configure language, appearance, always-on-top behavior, whether closing the main window keeps the menu bar item running, and manually check GitHub Releases from the System section.
 - Main-window refresh button: immediately refresh quota, token usage, trend, and task board.
 - System window controls: close, minimize, or zoom the main window. Quit from the menu bar runtime menu or the app menu.
 
@@ -64,7 +64,7 @@ Download the DMG for your Mac architecture from GitHub Releases:
 3. Open codexU from `Applications`.
 4. Complete the **First Install: Privacy & Security** steps above if macOS blocks the first launch.
 
-After installation, codexU checks GitHub Releases for new versions at most once per day by default. The check reads public release metadata only. When an update is available, codexU opens the browser to download the DMG or view the Release page; installation remains manual. You can disable automatic checks in Settings or run a manual check there.
+After installation, codexU checks GitHub Releases for new versions at most once per day by default, including beta releases. The check reads public release metadata only. When an update is available, codexU opens the browser to download the DMG or view the Release page; installation remains manual. You can also run a manual check from the System section in Settings.
 
 ## Requirements
 
@@ -136,7 +136,7 @@ For Developer ID signing and notarization, see [DISTRIBUTION.md](DISTRIBUTION.md
 - Claude Code historical tokens: assistant `message.usage` fields in `~/.claude/projects/**/*.jsonl`.
 - Claude Code tools, Skills, and tasks: transcript `tool_use.name` / explicit Skill attribution, plus `~/.claude/tasks/**/*.json`.
 - Claude Code active quota: optional `~/Library/Caches/codexU/claude-code/statusline-snapshot.json`; without it, 5-hour and 7-day quota show `--`.
-- Update checks: optional access to the GitHub Releases API for public `shanggqm/codexU` release metadata, cached in `~/Library/Caches/codexU/update-check.json`.
+- Update checks: default access to the GitHub Releases API for public `shanggqm/codexU` release metadata, cached in `~/Library/Caches/codexU/update-check.json`.
 
 Current Codex quota APIs expose rolling-window percentages and reset times, not absolute account quota sizes. Claude Code support reads local history and an optional active snapshot; it is not a Claude.ai official billing view. See [RESEARCH.md](RESEARCH.md) for the data model and fallback behavior.
 
