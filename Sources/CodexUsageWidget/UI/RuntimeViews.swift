@@ -21,7 +21,7 @@ struct RuntimeSelector: View {
                             .minimumScaleFactor(0.82)
                     }
                     .foregroundStyle(selected == scope ? .primary : .secondary)
-                    .frame(minWidth: scope == .claudeCode ? 112 : 78, minHeight: 24)
+                    .frame(minWidth: scope == .claudeCode ? 112 : 78, minHeight: titlebarControlHeight)
                     .padding(.horizontal, 6)
                     .background(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)

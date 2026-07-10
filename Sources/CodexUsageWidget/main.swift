@@ -3110,7 +3110,7 @@ struct HeaderActionButton: View {
             Image(systemName: systemName)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(foregroundColor)
-                .frame(width: headerActionButtonSize, height: headerActionButtonSize)
+                .frame(width: titlebarControlHeight, height: titlebarControlHeight)
                 .background(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(fillColor)
@@ -6143,7 +6143,7 @@ private let dashboardCardHeaderHeight: CGFloat = 28
 private let dashboardCardHeaderSpacing: CGFloat = 8
 private let dashboardCardContentSpacing: CGFloat = 8
 private let dashboardHeaderControlHeight: CGFloat = 24
-private let headerActionButtonSize: CGFloat = 24
+let titlebarControlHeight: CGFloat = 20
 private let dashboardTabSegmentWidth: CGFloat = 96
 private let dashboardTabIconWidth: CGFloat = 14
 private let dashboardTabHorizontalPadding: CGFloat = 10
