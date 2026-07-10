@@ -3290,6 +3290,13 @@ struct SettingsPanelView: View {
                 }
 
                 settingsSection(
+                    title: language.text("状态栏", "Menu Bar"),
+                    detail: language.text("内容与显示密度", "Content and density")
+                ) {
+                    StatusItemSettingsView(settings: settings, store: store)
+                }
+
+                settingsSection(
                     title: language.text("窗口", "Window"),
                     detail: language.text("主窗口行为", "Main window")
                 ) {
