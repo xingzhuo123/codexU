@@ -3727,6 +3727,8 @@ struct DualQuotaRing: View {
     let secondary: RateWindow?
     let language: WidgetLanguage
 
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
     var body: some View {
         ZStack {
             QuotaRingSegment(
@@ -3748,6 +3750,17 @@ struct DualQuotaRing: View {
                 lineWidth: 16
             )
             .frame(width: 107, height: 107)
+
+            if !accessibilityReduceMotion,
+               primary != nil || secondary != nil {
+                DualQuotaRingParticles(
+                    primaryProgress: progress(primary),
+                    secondaryProgress: progress(secondary)
+                )
+                .frame(width: 145, height: 145)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
 
             Circle()
                 .fill(WidgetPalette.surfaceTrack)
@@ -3774,6 +3787,10 @@ struct DualQuotaRing: View {
     private func remainingText(_ window: RateWindow?) -> String {
         guard let window else { return "--" }
         return "\(Int(window.remainingPercent.rounded()))%"
+    }
+
+    private func progress(_ window: RateWindow?) -> CGFloat? {
+        window.map { CGFloat(max(0, min(1, $0.remainingPercent / 100))) }
     }
 }
 
@@ -3864,6 +3881,196 @@ struct QuotaRingSegment: View {
             x: center.x + CGFloat(cos(radians)) * radius,
             y: center.y + CGFloat(sin(radians)) * radius
         )
+    }
+}
+
+private struct DualQuotaRingParticles: NSViewRepresentable {
+    private struct ParticleStyle {
+        let phase: Double
+        let speed: Double
+        let radialOffset: CGFloat
+        let diameter: CGFloat
+        let opacity: Double
+    }
+
+    private static let styles = [
+        ParticleStyle(phase: 0.04, speed: 0.095, radialOffset: -2.8, diameter: 1.3, opacity: 0.52),
+        ParticleStyle(phase: 0.24, speed: 0.122, radialOffset: 2.5, diameter: 2.2, opacity: 0.78),
+        ParticleStyle(phase: 0.45, speed: 0.076, radialOffset: -0.4, diameter: 2.9, opacity: 0.90),
+        ParticleStyle(phase: 0.66, speed: 0.137, radialOffset: 3.0, diameter: 1.2, opacity: 0.46),
+        ParticleStyle(phase: 0.86, speed: 0.104, radialOffset: -2.0, diameter: 1.8, opacity: 0.66),
+        ParticleStyle(phase: 0.14, speed: 0.083, radialOffset: 0.9, diameter: 2.5, opacity: 0.82),
+        ParticleStyle(phase: 0.56, speed: 0.116, radialOffset: -3.1, diameter: 1.4, opacity: 0.50)
+    ]
+
+    let primaryProgress: CGFloat?
+    let secondaryProgress: CGFloat?
+
+    func makeNSView(context: Context) -> QuotaRingParticleHostView {
+        let view = QuotaRingParticleHostView()
+        view.configure(primaryProgress: primaryProgress, secondaryProgress: secondaryProgress)
+        return view
+    }
+
+    func updateNSView(_ nsView: QuotaRingParticleHostView, context: Context) {
+        nsView.configure(primaryProgress: primaryProgress, secondaryProgress: secondaryProgress)
+    }
+
+    final class QuotaRingParticleHostView: NSView {
+        private let particleContainer = CALayer()
+        private var primaryProgress: CGFloat?
+        private var secondaryProgress: CGFloat?
+        private var renderedSize = CGSize.zero
+
+        override var isFlipped: Bool { true }
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            wantsLayer = true
+            layer?.masksToBounds = false
+            particleContainer.masksToBounds = false
+            particleContainer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
+            layer?.addSublayer(particleContainer)
+        }
+
+        required init?(coder: NSCoder) {
+            nil
+        }
+
+        override func layout() {
+            super.layout()
+            guard renderedSize != bounds.size else { return }
+            renderedSize = bounds.size
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            particleContainer.frame = bounds
+            CATransaction.commit()
+            rebuildAnimations()
+        }
+
+        func configure(primaryProgress: CGFloat?, secondaryProgress: CGFloat?) {
+            let primary = clampedProgress(primaryProgress)
+            let secondary = clampedProgress(secondaryProgress)
+            guard !equalProgress(primary, self.primaryProgress)
+                || !equalProgress(secondary, self.secondaryProgress)
+            else { return }
+
+            self.primaryProgress = primary
+            self.secondaryProgress = secondary
+            rebuildAnimations()
+        }
+
+        private func rebuildAnimations() {
+            guard bounds.width > 0, bounds.height > 0 else { return }
+
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            particleContainer.sublayers?.forEach { $0.removeFromSuperlayer() }
+
+            let center = CGPoint(x: bounds.midX, y: bounds.midY)
+            addParticles(
+                center: center,
+                radius: 64.5,
+                progress: primaryProgress,
+                maximumCount: 7,
+                phaseOffset: 0
+            )
+            addParticles(
+                center: center,
+                radius: 45.5,
+                progress: secondaryProgress,
+                maximumCount: 5,
+                phaseOffset: 0.31
+            )
+            CATransaction.commit()
+        }
+
+        private func addParticles(
+            center: CGPoint,
+            radius: CGFloat,
+            progress: CGFloat?,
+            maximumCount: Int,
+            phaseOffset: Double
+        ) {
+            guard let progress, progress > 0.02 else { return }
+            let activeCount = min(
+                maximumCount,
+                max(1, Int(ceil(Double(maximumCount) * min(1, Double(progress) * 1.5))))
+            )
+
+            for style in DualQuotaRingParticles.styles.prefix(activeCount) {
+                let particle = CALayer()
+                particle.bounds = CGRect(x: 0, y: 0, width: style.diameter, height: style.diameter)
+                particle.cornerRadius = style.diameter / 2
+                particle.backgroundColor = WidgetPalette.dataFlowParticle.cgColor
+                particle.opacity = 0
+                particle.contentsScale = particleContainer.contentsScale
+
+                let particleRadius = radius + style.radialOffset
+                let path = particlePath(center: center, radius: particleRadius, progress: progress)
+                particle.position = arcPoint(center: center, radius: particleRadius, progress: progress)
+                particleContainer.addSublayer(particle)
+
+                let position = CAKeyframeAnimation(keyPath: "position")
+                position.path = path
+                position.calculationMode = .paced
+
+                let opacity = CAKeyframeAnimation(keyPath: "opacity")
+                opacity.values = [0, style.opacity, style.opacity, 0]
+                opacity.keyTimes = [0, 0.08, 0.88, 1]
+
+                let duration = max(1.6, Double(progress) / style.speed)
+                let phase = (style.phase + phaseOffset).truncatingRemainder(dividingBy: 1)
+                let animation = CAAnimationGroup()
+                animation.animations = [position, opacity]
+                animation.duration = duration
+                animation.repeatCount = .infinity
+                animation.timingFunction = CAMediaTimingFunction(name: .linear)
+                animation.beginTime = CACurrentMediaTime()
+                animation.timeOffset = duration * phase
+                animation.isRemovedOnCompletion = false
+                particle.add(animation, forKey: "quota-flow")
+            }
+        }
+
+        private func particlePath(center: CGPoint, radius: CGFloat, progress: CGFloat) -> CGPath {
+            let path = CGMutablePath()
+            let sampleCount = max(16, Int(ceil(progress * 120)))
+            path.move(to: arcPoint(center: center, radius: radius, progress: progress))
+            for index in 1...sampleCount {
+                let fraction = CGFloat(index) / CGFloat(sampleCount)
+                path.addLine(to: arcPoint(
+                    center: center,
+                    radius: radius,
+                    progress: progress * (1 - fraction)
+                ))
+            }
+            return path
+        }
+
+        private func arcPoint(center: CGPoint, radius: CGFloat, progress: CGFloat) -> CGPoint {
+            let radians = (-90.0 + Double(progress) * 360) * .pi / 180
+            return CGPoint(
+                x: center.x + CGFloat(cos(radians)) * radius,
+                y: center.y + CGFloat(sin(radians)) * radius
+            )
+        }
+
+        private func clampedProgress(_ progress: CGFloat?) -> CGFloat? {
+            guard let progress, progress > 0.02 else { return nil }
+            return max(0, min(1, progress))
+        }
+
+        private func equalProgress(_ lhs: CGFloat?, _ rhs: CGFloat?) -> Bool {
+            switch (lhs, rhs) {
+            case (.none, .none):
+                true
+            case let (.some(lhs), .some(rhs)):
+                abs(lhs - rhs) < 0.0001
+            default:
+                false
+            }
+        }
     }
 }
 
@@ -5866,6 +6073,7 @@ enum WidgetPalette {
     static let statusDanger = Color(red: 1.000, green: 0.271, blue: 0.227) // #FF453A
     static let statusNeutral = Color(red: 0.596, green: 0.596, blue: 0.616) // #98989D
     static let dataReasoning = Color(red: 0.749, green: 0.353, blue: 0.949) // #BF5AF2
+    static let dataFlowParticle = NSColor.white
 
     static let surfaceTrack = Color.primary.opacity(0.10)
     static let dataZero = statusNeutral.opacity(0.35)
