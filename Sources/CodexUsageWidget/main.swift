@@ -3897,10 +3897,14 @@ private struct DualQuotaRingParticles: NSViewRepresentable {
         ParticleStyle(phase: 0.04, speed: 0.095, radialOffset: -2.8, diameter: 1.3, opacity: 0.52),
         ParticleStyle(phase: 0.24, speed: 0.122, radialOffset: 2.5, diameter: 2.2, opacity: 0.78),
         ParticleStyle(phase: 0.45, speed: 0.076, radialOffset: -0.4, diameter: 2.9, opacity: 0.90),
-        ParticleStyle(phase: 0.66, speed: 0.137, radialOffset: 3.0, diameter: 1.2, opacity: 0.46),
+        ParticleStyle(phase: 0.66, speed: 0.274, radialOffset: 3.0, diameter: 1.2, opacity: 0.46),
         ParticleStyle(phase: 0.86, speed: 0.104, radialOffset: -2.0, diameter: 1.8, opacity: 0.66),
         ParticleStyle(phase: 0.14, speed: 0.083, radialOffset: 0.9, diameter: 2.5, opacity: 0.82),
-        ParticleStyle(phase: 0.56, speed: 0.116, radialOffset: -3.1, diameter: 1.4, opacity: 0.50)
+        ParticleStyle(phase: 0.56, speed: 0.116, radialOffset: -3.1, diameter: 1.4, opacity: 0.50),
+        ParticleStyle(phase: 0.34, speed: 0.068, radialOffset: 1.7, diameter: 0.9, opacity: 0.38),
+        ParticleStyle(phase: 0.74, speed: 0.154, radialOffset: -1.2, diameter: 2.0, opacity: 0.72),
+        ParticleStyle(phase: 0.94, speed: 0.111, radialOffset: 2.1, diameter: 1.1, opacity: 0.58),
+        ParticleStyle(phase: 0.51, speed: 0.126, radialOffset: -2.4, diameter: 1.7, opacity: 0.64)
     ]
 
     let primaryProgress: CGFloat?
@@ -3972,14 +3976,14 @@ private struct DualQuotaRingParticles: NSViewRepresentable {
                 center: center,
                 radius: 64.5,
                 progress: primaryProgress,
-                maximumCount: 7,
+                maximumCount: 11,
                 phaseOffset: 0
             )
             addParticles(
                 center: center,
                 radius: 45.5,
                 progress: secondaryProgress,
-                maximumCount: 5,
+                maximumCount: 8,
                 phaseOffset: 0.31
             )
             CATransaction.commit()
