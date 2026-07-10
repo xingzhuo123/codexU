@@ -496,6 +496,7 @@ private struct LocalAnalytics: Equatable, Codable {
 private struct LocalAnalyticsCacheEntry: Codable {
     let version: Int
     let dayKey: String
+    let timeZoneIdentifier: String
     let databaseFingerprint: String
     let sourceFingerprint: String
     let analytics: LocalAnalytics
@@ -508,10 +509,15 @@ final class UsageStore: ObservableObject {
     @Published var selectedRuntimeScope: RuntimeScope = .codex
     @Published var visibleRuntimeScopes: [RuntimeScope] = RuntimeScope.allCases
     @Published var isRefreshing = false
+    @Published private(set) var statisticsPreference = StatisticsTimeZonePreferenceStore.load()
 
     private var fullTimer: Timer?
     private var taskBoardTimer: Timer?
+    private var statisticsRolloverTimer: Timer?
+    private var systemTimeZoneObserver: NSObjectProtocol?
     private var isRefreshingTaskBoard = false
+    private var refreshGeneration: UInt64 = 0
+    private var hasPendingRefresh = false
 
     var runtimeSummaries: [RuntimeMenuSummary] {
         RuntimeScope.allCases.compactMap { scope in
@@ -531,6 +537,16 @@ final class UsageStore: ObservableObject {
 
     func start() {
         refresh()
+        systemTimeZoneObserver = NotificationCenter.default.addObserver(
+            forName: .NSSystemTimeZoneDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.statisticsPreference.selection == .system else { return }
+            self.scheduleStatisticsRollover()
+            self.refresh()
+        }
+        scheduleStatisticsRollover()
         fullTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.refresh()
         }
@@ -542,18 +558,62 @@ final class UsageStore: ObservableObject {
     func stop() {
         fullTimer?.invalidate()
         taskBoardTimer?.invalidate()
+        statisticsRolloverTimer?.invalidate()
+        if let systemTimeZoneObserver {
+            NotificationCenter.default.removeObserver(systemTimeZoneObserver)
+            self.systemTimeZoneObserver = nil
+        }
     }
 
     func refresh() {
-        guard !isRefreshing else { return }
+        refreshGeneration &+= 1
+        let generation = refreshGeneration
+        let preference = statisticsPreference
+        guard !isRefreshing else {
+            hasPendingRefresh = true
+            return
+        }
         isRefreshing = true
 
         DispatchQueue.global(qos: .utility).async {
-            let multiSnapshot = MultiRuntimeUsageReader().load()
+            let multiSnapshot = MultiRuntimeUsageReader().load(
+                statisticsPreference: preference,
+                generation: generation
+            )
             DispatchQueue.main.async {
-                self.apply(multiSnapshot)
+                if generation == self.refreshGeneration,
+                   multiSnapshot.statisticsIdentity.preference == self.statisticsPreference {
+                    self.apply(multiSnapshot)
+                }
                 self.isRefreshing = false
+                if self.hasPendingRefresh {
+                    self.hasPendingRefresh = false
+                    self.refresh()
+                }
             }
+        }
+    }
+
+    func updateStatisticsTimeZone(_ preference: StatisticsTimeZonePreference) {
+        let repaired = preference.repaired()
+        guard repaired != statisticsPreference else { return }
+        statisticsPreference = repaired
+        StatisticsTimeZonePreferenceStore.save(repaired)
+        scheduleStatisticsRollover()
+        refresh()
+    }
+
+    private func scheduleStatisticsRollover() {
+        statisticsRolloverTimer?.invalidate()
+        let context = StatisticsContext(preference: statisticsPreference, now: Date())
+        let start = context.calendar.startOfDay(for: context.now)
+        guard let nextDay = context.calendar.date(byAdding: .day, value: 1, to: start) else { return }
+        statisticsRolloverTimer = Timer(fire: nextDay.addingTimeInterval(1), interval: 0, repeats: false) { [weak self] _ in
+            self?.scheduleStatisticsRollover()
+            self?.refresh()
+        }
+        if let statisticsRolloverTimer {
+            RunLoop.main.add(statisticsRolloverTimer, forMode: .common)
         }
     }
 
@@ -580,7 +640,10 @@ final class UsageStore: ObservableObject {
         let scope = selectedRuntimeScope
 
         DispatchQueue.global(qos: .utility).async {
-            let taskBoard = MultiRuntimeUsageReader().loadTaskBoard(scope: scope)
+            let taskBoard = MultiRuntimeUsageReader().loadTaskBoard(
+                scope: scope,
+                statisticsPreference: self.statisticsPreference
+            )
             DispatchQueue.main.async {
                 self.applyTaskBoard(taskBoard, for: scope)
                 self.isRefreshingTaskBoard = false
@@ -610,7 +673,8 @@ final class UsageStore: ObservableObject {
         multiRuntimeSnapshot = MultiRuntimeUsageSnapshot(
             refreshedAt: multiRuntimeSnapshot.refreshedAt,
             runtimes: runtimeSnapshots,
-            aggregate: aggregate
+            aggregate: aggregate,
+            statisticsIdentity: multiRuntimeSnapshot.statisticsIdentity
         )
         if selectedRuntimeScope == scope {
             snapshot = runtimeSnapshots[index].snapshot
@@ -626,14 +690,14 @@ final class CodexUsageReader {
     private static var persistentSessionUsageCache: [String: SessionUsageCacheEntry]?
     private static var localAnalyticsCache: LocalAnalyticsCacheEntry?
 
-    func load() -> UsageSnapshot {
+    func load(context: RuntimeLoadContext) -> UsageSnapshot {
         var messages: [String] = []
         let appServer = readAppServer(messages: &messages)
-        let local = readLocalUsage(messages: &messages)
-        let taskBoard = readTaskBoard(messages: &messages)
+        let local = readLocalUsage(context: context, messages: &messages)
+        let taskBoard = readTaskBoard(context: context, messages: &messages)
 
         return UsageSnapshot(
-            refreshedAt: Date(),
+            refreshedAt: context.now,
             account: appServer.account,
             limitId: appServer.limitId,
             limitName: appServer.limitName,
@@ -647,9 +711,9 @@ final class CodexUsageReader {
         )
     }
 
-    func loadTaskBoard() -> TaskBoard? {
+    func loadTaskBoard(context: RuntimeLoadContext) -> TaskBoard? {
         var messages: [String] = []
-        return readTaskBoard(messages: &messages)
+        return readTaskBoard(context: context, messages: &messages)
     }
 
     private struct AppServerSnapshot {
@@ -889,7 +953,7 @@ final class CodexUsageReader {
         return int64Value(summary["lifetimeTokens"])
     }
 
-    private func readLocalUsage(messages: inout [String]) -> LocalUsage? {
+    private func readLocalUsage(context: RuntimeLoadContext, messages: inout [String]) -> LocalUsage? {
         guard let dbPath = firstExistingPath([
             NSHomeDirectory() + "/.codex/state_5.sqlite",
             NSHomeDirectory() + "/.codex/sqlite/state_5.sqlite"
@@ -907,8 +971,8 @@ final class CodexUsageReader {
             return nil
         }
 
-        let calendar = Calendar.current
-        let now = Date()
+        let calendar = context.statistics.calendar
+        let now = context.now
         let dayStart = calendar.startOfDay(for: now)
         let sevenDayStart = calendar.date(byAdding: .day, value: -6, to: dayStart) ?? dayStart
         let dayFormatter = DateFormatter()
@@ -938,11 +1002,10 @@ final class CodexUsageReader {
         """
 
         let dailyQuery = """
-        SELECT date(updated_at, 'unixepoch', 'localtime') AS day, COALESCE(SUM(tokens_used), 0) AS tokens
+        SELECT updated_at AS updatedAt, tokens_used AS tokens
         FROM threads
         WHERE updated_at >= \(Int(sevenDayStart.timeIntervalSince1970))
-        GROUP BY day
-        ORDER BY day ASC;
+        ORDER BY updated_at ASC;
         """
 
         guard
@@ -966,10 +1029,12 @@ final class CodexUsageReader {
             )
         }
 
-        let tokensByDay = Dictionary(uniqueKeysWithValues: dailyObjects.compactMap { object -> (String, Int64)? in
-            guard let day = object["day"] as? String else { return nil }
-            return (day, int64Value(object["tokens"]) ?? 0)
-        })
+        var tokensByDay: [String: Int64] = [:]
+        for object in dailyObjects {
+            guard let updatedAt = dateFromEpoch(object["updatedAt"]) else { continue }
+            let key = context.statistics.dayKey(for: updatedAt)
+            tokensByDay[key, default: 0] += int64Value(object["tokens"]) ?? 0
+        }
 
         let dailyBuckets = (0..<7).compactMap { index -> DailyTokenBucket? in
             guard let date = calendar.date(byAdding: .day, value: index - 6, to: dayStart) else { return nil }
@@ -986,6 +1051,7 @@ final class CodexUsageReader {
             dbPath: dbPath,
             dayStart: dayStart,
             sevenDayStart: sevenDayStart,
+            statistics: context.statistics,
             messages: &messages
         )
         let allProjects = readAllTimeProjects(sqlitePath: sqlitePath, dbPath: dbPath)
@@ -1009,7 +1075,8 @@ final class CodexUsageReader {
                 sqlitePath: sqlitePath,
                 dbPath: dbPath,
                 dayStart: dayStart,
-                sevenDayStart: sevenDayStart
+                sevenDayStart: sevenDayStart,
+                calendar: calendar
             ),
             projectBoard: projectBoard,
             toolUsages: analytics.toolUsages,
@@ -1022,9 +1089,10 @@ final class CodexUsageReader {
         dbPath: String,
         dayStart: Date,
         sevenDayStart: Date,
+        statistics: StatisticsContext,
         messages: inout [String]
     ) -> LocalAnalytics {
-        let calendar = Calendar.current
+        let calendar = statistics.calendar
         let trendStart = calendar.date(byAdding: .day, value: -190, to: dayStart) ?? sevenDayStart
         let sourceQuery = """
         SELECT id, rollout_path AS rolloutPath, model, cwd, updated_at AS updatedAt
@@ -1054,7 +1122,7 @@ final class CodexUsageReader {
             return LocalAnalytics(detailedUsage: nil, usageTrend: nil, recentProjects: [], toolUsages: [], skillUsages: [])
         }
 
-        let dayKey = localDayKey(dayStart, calendar: calendar)
+        let dayKey = statistics.dayKey(for: dayStart)
         let databaseFingerprint = fileFingerprint(paths: [
             dbPath,
             dbPath + "-wal",
@@ -1065,6 +1133,7 @@ final class CodexUsageReader {
         if let cached = Self.localAnalyticsCache,
            cached.version == localAnalyticsCacheVersion,
            cached.dayKey == dayKey,
+           cached.timeZoneIdentifier == statistics.resolvedIdentifier,
            cached.databaseFingerprint == databaseFingerprint,
            cached.sourceFingerprint == sourceFingerprint {
             return cached.analytics
@@ -1073,13 +1142,14 @@ final class CodexUsageReader {
         if let cached = readPersistentLocalAnalyticsCache(),
            cached.version == localAnalyticsCacheVersion,
            cached.dayKey == dayKey,
+           cached.timeZoneIdentifier == statistics.resolvedIdentifier,
            cached.databaseFingerprint == databaseFingerprint,
            cached.sourceFingerprint == sourceFingerprint {
             Self.localAnalyticsCache = cached
             return cached.analytics
         }
 
-        var monthComponents = calendar.dateComponents([.year, .month], from: Date())
+        var monthComponents = calendar.dateComponents([.year, .month], from: dayStart)
         monthComponents.day = 1
         monthComponents.hour = 0
         monthComponents.minute = 0
@@ -1123,7 +1193,7 @@ final class CodexUsageReader {
                 )
 
                 if delta.date >= trendStart {
-                    let key = localDayKey(delta.date, calendar: calendar)
+                    let key = statistics.dayKey(for: delta.date)
                     var usage = dailyUsage[key] ?? .zero
                     usage.add(tokens: delta.tokens, costUSD: cost)
                     dailyUsage[key] = usage
@@ -1183,6 +1253,7 @@ final class CodexUsageReader {
             Self.localAnalyticsCache = LocalAnalyticsCacheEntry(
                 version: localAnalyticsCacheVersion,
                 dayKey: dayKey,
+                timeZoneIdentifier: statistics.resolvedIdentifier,
                 databaseFingerprint: databaseFingerprint,
                 sourceFingerprint: sourceFingerprint,
                 analytics: analytics
@@ -1213,6 +1284,7 @@ final class CodexUsageReader {
         Self.localAnalyticsCache = LocalAnalyticsCacheEntry(
             version: localAnalyticsCacheVersion,
             dayKey: dayKey,
+            timeZoneIdentifier: statistics.resolvedIdentifier,
             databaseFingerprint: databaseFingerprint,
             sourceFingerprint: sourceFingerprint,
             analytics: analytics
@@ -1376,9 +1448,9 @@ final class CodexUsageReader {
         sqlitePath: String,
         dbPath: String,
         dayStart: Date,
-        sevenDayStart: Date
+        sevenDayStart: Date,
+        calendar: Calendar
     ) -> UsageTrend? {
-        let calendar = Calendar.current
         let trendStart = calendar.date(byAdding: .day, value: -190, to: dayStart) ?? sevenDayStart
         var monthComponents = calendar.dateComponents([.year, .month], from: Date())
         monthComponents.day = 1
@@ -1388,11 +1460,10 @@ final class CodexUsageReader {
         let monthStart = calendar.date(from: monthComponents) ?? dayStart
 
         let query = """
-        SELECT date(updated_at, 'unixepoch', 'localtime') AS day, COALESCE(SUM(tokens_used), 0) AS tokens
+        SELECT updated_at AS updatedAt, tokens_used AS tokens
         FROM threads
         WHERE updated_at >= \(Int(trendStart.timeIntervalSince1970))
-        GROUP BY day
-        ORDER BY day ASC;
+        ORDER BY updated_at ASC;
         """
 
         let rows = runSQLiteJSON(sqlitePath: sqlitePath, dbPath: dbPath, query: query)
@@ -1400,9 +1471,11 @@ final class CodexUsageReader {
 
         var dailyUsage: [String: PricedTokenUsage] = [:]
         for row in rows {
-            guard let key = row["day"] as? String else { continue }
+            guard let updatedAt = dateFromEpoch(row["updatedAt"]) else { continue }
+            let key = localDayKey(updatedAt, calendar: calendar)
             let tokens = int64Value(row["tokens"]) ?? 0
-            dailyUsage[key] = PricedTokenUsage(
+            var usage = dailyUsage[key] ?? .zero
+            usage.add(
                 tokens: TokenBreakdown(
                     inputTokens: 0,
                     cachedInputTokens: 0,
@@ -1410,8 +1483,9 @@ final class CodexUsageReader {
                     reasoningOutputTokens: 0,
                     totalTokens: tokens
                 ),
-                estimatedCostUSD: 0
+                costUSD: 0
             )
+            dailyUsage[key] = usage
         }
 
         return makeUsageTrend(
@@ -1765,9 +1839,9 @@ final class CodexUsageReader {
         deltas.append(SessionUsageDelta(date: date, tokens: delta))
     }
 
-    private func readTaskBoard(messages: inout [String]) -> TaskBoard? {
-        let calendar = Calendar.current
-        let now = Date()
+    private func readTaskBoard(context: RuntimeLoadContext, messages: inout [String]) -> TaskBoard? {
+        let calendar = context.statistics.calendar
+        let now = context.now
         let dayStart = calendar.startOfDay(for: now)
         let activeCutoff = now.addingTimeInterval(-2 * 60 * 60)
 
@@ -3290,6 +3364,41 @@ struct SettingsPanelView: View {
                 }
 
                 settingsSection(
+                    title: language.text("数据与统计", "Data & Statistics"),
+                    detail: language.text("自然日口径", "Calendar-day basis")
+                ) {
+                    SettingsPickerRow(
+                        title: language.text("统计时区", "Statistics time zone"),
+                        detail: statisticsTimeZoneDetail
+                    ) {
+                        SettingsSegmentedControl(
+                            selection: statisticsTimeZoneSelectionBinding,
+                            options: [
+                                SettingsSegmentOption(value: .system, title: language.text("跟随系统", "System")),
+                                SettingsSegmentOption(value: .utc, title: "UTC"),
+                                SettingsSegmentOption(value: .fixed, title: language.text("固定", "Fixed"))
+                            ],
+                            width: 250
+                        )
+                    }
+
+                    if store.statisticsPreference.selection == .fixed {
+                        SettingsPickerRow(
+                            title: language.text("固定时区", "Fixed time zone"),
+                            detail: language.text("使用 IANA 时区，自动处理夏令时", "Uses an IANA zone and observes daylight saving time")
+                        ) {
+                            Picker("", selection: statisticsFixedIdentifierBinding) {
+                                ForEach(TimeZone.knownTimeZoneIdentifiers, id: \.self) { identifier in
+                                    Text(identifier).tag(identifier)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(width: 250)
+                        }
+                    }
+                }
+
+                settingsSection(
                     title: language.text("状态栏", "Menu Bar"),
                     detail: language.text("内容与显示密度", "Content and density")
                 ) {
@@ -3346,6 +3455,43 @@ struct SettingsPanelView: View {
         .padding(20)
         .frame(width: 480, alignment: .topLeading)
         .background(WidgetPalette.sectionFill(colorScheme).opacity(0.35))
+    }
+
+    private var statisticsTimeZoneSelectionBinding: Binding<StatisticsTimeZoneSelection> {
+        Binding(
+            get: { store.statisticsPreference.selection },
+            set: { selection in
+                var preference = store.statisticsPreference
+                preference.selection = selection
+                store.updateStatisticsTimeZone(preference)
+            }
+        )
+    }
+
+    private var statisticsFixedIdentifierBinding: Binding<String> {
+        Binding(
+            get: { store.statisticsPreference.fixedIdentifier },
+            set: { identifier in
+                store.updateStatisticsTimeZone(
+                    StatisticsTimeZonePreference(selection: .fixed, fixedIdentifier: identifier)
+                )
+            }
+        )
+    }
+
+    private var statisticsTimeZoneDetail: String {
+        let identity = store.multiRuntimeSnapshot.statisticsIdentity
+        switch identity.preference.selection {
+        case .system:
+            return language.text(
+                "默认按系统自然日统计 · \(identity.resolvedIdentifier)",
+                "Uses the system calendar day · \(identity.resolvedIdentifier)"
+            )
+        case .utc:
+            return language.text("UTC 日界线，便于对照官方", "UTC day boundary for easier official comparison")
+        case .fixed:
+            return identity.resolvedIdentifier
+        }
     }
 
     private var settingsHeader: some View {
@@ -6482,6 +6628,7 @@ private func shortWeekdayText(_ date: Date, language: WidgetLanguage) -> String 
 private func localDayKey(_ date: Date, calendar: Calendar = .current) -> String {
     let formatter = DateFormatter()
     formatter.calendar = calendar
+    formatter.timeZone = calendar.timeZone
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.dateFormat = "yyyy-MM-dd"
     return formatter.string(from: date)
@@ -7568,6 +7715,10 @@ struct codexUMain {
 
         if CommandLine.arguments.contains("--self-test-updates") {
             exit(AppUpdateSelfTest.run() ? 0 : 1)
+        }
+
+        if CommandLine.arguments.contains("--self-test-statistics-time-zone") {
+            exit(StatisticsTimeZoneSelfTest.run() ? 0 : 1)
         }
 
         if CommandLine.arguments.contains("--dump-json") {
