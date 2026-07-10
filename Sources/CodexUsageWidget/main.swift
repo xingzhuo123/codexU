@@ -4008,12 +4008,20 @@ private struct DualQuotaRingParticles: NSViewRepresentable {
                 max(1, Int(ceil(Double(maximumCount) * min(1, Double(progress) * 1.5))))
             )
             let activeStyles = Array(DualQuotaRingParticles.styles.prefix(activeCount))
+            let speedFactor = quotaSpeedFactor(for: progress)
             let fastParticleCount = max(1, Int((Double(activeCount) * 0.3).rounded()))
             let fastParticleIndexes = Set(
                 activeStyles.indices
                     .sorted {
-                        actualSpeed(for: activeStyles[$0], progress: progress)
-                            > actualSpeed(for: activeStyles[$1], progress: progress)
+                        actualSpeed(
+                            for: activeStyles[$0],
+                            progress: progress,
+                            speedFactor: speedFactor
+                        ) > actualSpeed(
+                            for: activeStyles[$1],
+                            progress: progress,
+                            speedFactor: speedFactor
+                        )
                     }
                     .prefix(fastParticleCount)
             )
@@ -4022,7 +4030,11 @@ private struct DualQuotaRingParticles: NSViewRepresentable {
                 let particleRadius = radius + style.radialOffset
                 let path = particlePath(center: center, radius: particleRadius, progress: progress)
                 let startPosition = arcPoint(center: center, radius: particleRadius, progress: progress)
-                let duration = max(1.6, Double(progress) / style.speed)
+                let duration = animationDuration(
+                    for: style,
+                    progress: progress,
+                    speedFactor: speedFactor
+                )
                 let phase = (style.phase + phaseOffset).truncatingRemainder(dividingBy: 1)
 
                 if fastParticleIndexes.contains(index) {
@@ -4109,8 +4121,28 @@ private struct DualQuotaRingParticles: NSViewRepresentable {
             particle.add(animation, forKey: "quota-flow")
         }
 
-        private func actualSpeed(for style: ParticleStyle, progress: CGFloat) -> Double {
-            let duration = max(1.6, Double(progress) / style.speed)
+        private func quotaSpeedFactor(for progress: CGFloat) -> Double {
+            0.45 + Double(progress) * 1.10
+        }
+
+        private func animationDuration(
+            for style: ParticleStyle,
+            progress: CGFloat,
+            speedFactor: Double
+        ) -> Double {
+            max(1.6, Double(progress) / (style.speed * speedFactor))
+        }
+
+        private func actualSpeed(
+            for style: ParticleStyle,
+            progress: CGFloat,
+            speedFactor: Double
+        ) -> Double {
+            let duration = animationDuration(
+                for: style,
+                progress: progress,
+                speedFactor: speedFactor
+            )
             return Double(progress) / duration
         }
 
