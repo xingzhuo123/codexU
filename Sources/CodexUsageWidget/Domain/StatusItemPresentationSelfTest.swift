@@ -119,22 +119,41 @@ enum StatusItemPresentationSelfTest {
         minimalPreferences.displayMode = .minimal
         let minimal = builder.build(source: source, preferences: minimalPreferences, language: .en, now: now)
         expect(minimal.itemLength <= 36, "minimal double-ring item should stay within 36pt")
-        let minimalLogoRect = StatusItemLayoutMetrics.minimalLogoRect
+        let minimalOuterRingRect = StatusItemLayoutMetrics.minimalOuterRingRect
         let minimalInnerRingRect = StatusItemLayoutMetrics.minimalInnerRingRect
         expect(
-            minimalLogoRect.midX == minimalInnerRingRect.midX
-                && minimalLogoRect.midY == minimalInnerRingRect.midY,
-            "minimal logo and quota rings should share one center"
+            minimalOuterRingRect.midX == minimalInnerRingRect.midX
+                && minimalOuterRingRect.midY == minimalInnerRingRect.midY,
+            "minimal quota rings should share one center"
         )
-        let minimalLogoHalfDiagonal = StatusItemLayoutMetrics.minimalLogoSize / CGFloat(2).squareRoot()
-        let minimalInnerRingInnerRadius = (
-            StatusItemLayoutMetrics.minimalInnerRingDiameter
-                - StatusItemLayoutMetrics.minimalInnerRingLineWidth
-        ) / 2
+        let minimalInnerRingOuterRadius = StatusItemLayoutMetrics.minimalInnerRingDiameter / 2
+        let minimalOuterRingInnerRadius = StatusItemLayoutMetrics.minimalOuterRingDiameter / 2
+            - StatusItemLayoutMetrics.minimalOuterRingLineWidth
         expect(
-            minimalLogoHalfDiagonal + StatusItemLayoutMetrics.minimalLogoClearance
-                <= minimalInnerRingInnerRadius,
-            "minimal logo should remain clear of the inner quota ring"
+            minimalInnerRingOuterRadius + StatusItemLayoutMetrics.minimalRingClearance
+                <= minimalOuterRingInnerRadius,
+            "minimal quota rings should remain visibly separated"
+        )
+        let renderer = StatusItemRenderer()
+        let minimalImage = renderer.render(minimal, appearance: NSAppearance(named: .aqua))
+        if let bitmap = minimalImage.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)),
+           let center = bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2) {
+            expect(center.alphaComponent < 0.01, "minimal mode center should remain transparent without a runtime logo")
+        } else {
+            failures.append("minimal status item render should produce a readable bitmap")
+        }
+        let todayTokenFont = NSFont.monospacedDigitSystemFont(
+            ofSize: StatusItemLayoutMetrics.todayTokenFontSize,
+            weight: .semibold
+        )
+        let maximumTokenWidth = ("999.9M" as NSString).size(withAttributes: [.font: todayTokenFont]).width
+        expect(
+            maximumTokenWidth <= StatusItemLayoutMetrics.classicTokenUnitWidth - 4,
+            "menu bar body-sized token text should fit its fixed classic slot"
+        )
+        expect(
+            maximumTokenWidth <= StatusItemLayoutMetrics.richTokenExtensionWidth - 4,
+            "menu bar body-sized token text should fit its fixed rich slot"
         )
 
         var classicPreferences = StatusItemPreferences.default
@@ -142,7 +161,6 @@ enum StatusItemPresentationSelfTest {
         let classic = builder.build(source: source, preferences: classicPreferences, language: .en, now: now)
         expect(classic.itemLength <= 88, "classic double-ring item should stay within 88pt")
         expect(classic.mode == .classic, "classic presentation should select the number-ring renderer")
-        let renderer = StatusItemRenderer()
         let aquaImage = renderer.render(classic, appearance: NSAppearance(named: .aqua))
         let darkImage = renderer.render(classic, appearance: NSAppearance(named: .darkAqua))
         expect(aquaImage.size == classic.imageSize, "Aqua render should preserve presentation size")

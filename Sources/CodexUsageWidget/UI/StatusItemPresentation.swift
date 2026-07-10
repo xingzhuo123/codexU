@@ -88,19 +88,19 @@ enum StatusItemLayoutMetrics {
     static let imageHeight: CGFloat = 22
     static let itemOuterPadding: CGFloat = 8
     static let minimalImageWidth: CGFloat = 26
-    static let minimalOuterRingDiameter: CGFloat = 20
-    static let minimalInnerRingDiameter: CGFloat = 16
-    static let minimalOuterRingLineWidth: CGFloat = 1.5
-    static let minimalInnerRingLineWidth: CGFloat = 1.2
-    static let minimalLogoSize: CGFloat = 9
-    static let minimalLogoClearance: CGFloat = 0.75
+    static let minimalOuterRingDiameter: CGFloat = 21
+    static let minimalInnerRingDiameter: CGFloat = 14
+    static let minimalOuterRingLineWidth: CGFloat = 2.5
+    static let minimalInnerRingLineWidth: CGFloat = 2.2
+    static let minimalRingClearance: CGFloat = 0.75
     static let leadingContentWidth: CGFloat = 22
     static let classicQuotaUnitWidth: CGFloat = 23
-    static let classicTokenUnitWidth: CGFloat = 42
+    static let classicTokenUnitWidth: CGFloat = 54
     static let richQuotaWidthWithReset: CGFloat = 116
     static let richQuotaWidthWithoutReset: CGFloat = 98
     static let richTokenOnlyWidth: CGFloat = 70
-    static let richTokenExtensionWidth: CGFloat = 44
+    static let richTokenExtensionWidth: CGFloat = 54
+    static let todayTokenFontSize: CGFloat = NSFont.systemFontSize
 
     static var minimalOuterRingRect: NSRect {
         centeredMinimalRect(side: minimalOuterRingDiameter)
@@ -108,10 +108,6 @@ enum StatusItemLayoutMetrics {
 
     static var minimalInnerRingRect: NSRect {
         centeredMinimalRect(side: minimalInnerRingDiameter)
-    }
-
-    static var minimalLogoRect: NSRect {
-        centeredMinimalRect(side: minimalLogoSize)
     }
 
     private static func centeredMinimalRect(side: CGFloat) -> NSRect {

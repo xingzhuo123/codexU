@@ -31,6 +31,11 @@ private extension RingRGBColor {
     }
 }
 
+private enum StatusItemTextOpacity {
+    static let primary: CGFloat = 0.94
+    static let supporting: CGFloat = 0.74
+}
+
 struct StatusItemRenderer {
     func render(
         _ presentation: StatusItemPresentation,
@@ -90,11 +95,6 @@ struct StatusItemRenderer {
                 lineWidth: lineWidth
             )
         }
-
-        drawRuntimeLogo(
-            presentation.runtime,
-            in: StatusItemLayoutMetrics.minimalLogoRect
-        )
     }
 
     private func drawClassic(_ presentation: StatusItemPresentation) {
@@ -209,8 +209,11 @@ struct StatusItemRenderer {
     ) {
         drawText(
             metric.compactValue,
-            in: NSRect(x: x + 2, y: 5.2, width: width - 4, height: 11),
-            font: .monospacedDigitSystemFont(ofSize: 8.6, weight: .semibold),
+            in: NSRect(x: x + 2, y: 2.4, width: width - 4, height: 17),
+            font: .monospacedDigitSystemFont(
+                ofSize: StatusItemLayoutMetrics.todayTokenFontSize,
+                weight: .semibold
+            ),
             color: metric.isAvailable ? primaryTextColor : mutedTextColor,
             alignment: .center
         )
@@ -435,11 +438,11 @@ struct StatusItemRenderer {
     }
 
     private var primaryTextColor: NSColor {
-        NSColor.labelColor.withAlphaComponent(0.94)
+        NSColor.labelColor.withAlphaComponent(StatusItemTextOpacity.primary)
     }
 
     private var secondaryTextColor: NSColor {
-        NSColor.secondaryLabelColor
+        NSColor.labelColor.withAlphaComponent(StatusItemTextOpacity.supporting)
     }
 
     private var mutedTextColor: NSColor {
