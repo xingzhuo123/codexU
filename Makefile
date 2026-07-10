@@ -26,7 +26,7 @@ else
 CODESIGN_FLAGS := --force --deep --options runtime --timestamp --sign "$(SIGN_IDENTITY)" $(CODESIGN_EXTRA_FLAGS)
 endif
 
-.PHONY: build run probe install dmg dmg-arm64 dmg-intel checksum checksum-arm64 checksum-intel release release-arm64 release-intel release-all notarize verify clean clean-dist
+.PHONY: build run probe test-statistics-time-zone install dmg dmg-arm64 dmg-intel checksum checksum-arm64 checksum-intel release release-arm64 release-intel release-all notarize verify clean clean-dist
 
 build:
 	rm -rf "$(APP_DIR)"
@@ -48,6 +48,9 @@ run: build
 
 probe: build
 	"$(MACOS_DIR)/$(APP_NAME)" --dump-json
+
+test-statistics-time-zone:
+	./scripts/test-statistics-time-zone.sh
 
 install: build
 	rm -rf "/Applications/$(APP_NAME).app"

@@ -112,11 +112,13 @@ struct MultiRuntimeUsageSnapshot: Equatable {
     let refreshedAt: Date
     let runtimes: [RuntimeUsageSnapshot]
     let aggregate: UsageSnapshot
+    let statisticsIdentity: StatisticsIdentity
 
     static let empty = MultiRuntimeUsageSnapshot(
         refreshedAt: Date(),
         runtimes: [],
-        aggregate: .empty
+        aggregate: .empty,
+        statisticsIdentity: .empty()
     )
 
     var totalTodayTokens: Int64 {
