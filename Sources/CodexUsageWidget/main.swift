@@ -3184,7 +3184,7 @@ struct TitlebarToolbarView: View {
                     )
             )
         }
-        .padding(.top, 10)
+        .padding(.top, 12)
         .padding(.bottom, 2)
         .padding(.trailing, 18)
         .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44, alignment: .topTrailing)
@@ -6143,7 +6143,7 @@ private let dashboardCardHeaderHeight: CGFloat = 28
 private let dashboardCardHeaderSpacing: CGFloat = 8
 private let dashboardCardContentSpacing: CGFloat = 8
 private let dashboardHeaderControlHeight: CGFloat = 24
-let titlebarControlHeight: CGFloat = 20
+let titlebarControlHeight: CGFloat = 18
 private let dashboardTabSegmentWidth: CGFloat = 96
 private let dashboardTabIconWidth: CGFloat = 14
 private let dashboardTabHorizontalPadding: CGFloat = 10
