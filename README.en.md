@@ -18,6 +18,8 @@ codexU is a macOS menu bar and desktop app for tracking OpenAI Codex / ChatGPT C
 
 - Shows remaining and used Codex quota for the 5-hour and 7-day windows, including reset times.
 - Adds a menu bar runtime menu with separate Codex and Claude Code cards, 5-hour/7-day remaining quota, today's token usage, and total tokens today.
+- Offers Minimal, Classic, and Rich menu bar modes: Minimal wraps the runtime logo with two quota rings, Classic places each quota number inside its own progress ring, and Rich keeps full labels, bars, and reset times.
+- Lets you switch menu bar quotas between used and remaining, choose 5-hour, 7-day, today tokens, and reset countdown, and keeps 5h/7d progress colors aligned with the main blue-purple quota rings.
 - Adds a top-level `Codex | Claude Code` switch in the main widget so all panels can switch runtime scope manually.
 - Supports Claude Code local transcript usage, 7-day trends, project rankings, top tools/Skills, and a basic task board.
 - Summarizes token usage for today, the last 7 days, and lifetime totals with uncached input, cached input, and output splits.
@@ -29,7 +31,7 @@ codexU is a macOS menu bar and desktop app for tracking OpenAI Codex / ChatGPT C
 - Shows top tool calls and top Skill usage to explain the structure of local Codex work.
 - Runs as a standard macOS window with Dock, system window controls, minimization, and optional background running after the main window is closed. Closing the main window hides the Dock icon and keeps the menu bar item.
 - Supports `Command + U` to show or hide the main window. The menu bar runtime menu can also open the main window, open settings, or quit.
-- Includes a Settings window for Chinese/English UI text, system/light/dark appearance, always-on-top behavior, close-window behavior, system status, and update check configuration.
+- Includes a Settings window for Chinese/English UI text, system/light/dark appearance, menu bar content with live preview, always-on-top behavior, close-window behavior, system status, and update check configuration.
 - Checks GitHub Releases for newer versions by default, including beta releases, and offers the DMG that matches the current Mac architecture. It does not silently download or install updates, and automatic checks can be turned off.
 - Reads data locally and does not upload usage, threads, or account data to a third-party service.
 
@@ -38,7 +40,7 @@ codexU is a macOS menu bar and desktop app for tracking OpenAI Codex / ChatGPT C
 - `Command + U`: show or hide the main window. If the window is minimized, the shortcut restores it and brings it forward.
 - Menu bar gauge icon: opens the runtime menu. Clicking a Codex or Claude Code card opens the main widget with that runtime selected.
 - Menu bar runtime menu: shows quick Codex / Claude Code status and provides Open, Settings, and Quit actions.
-- Settings window: configure language, appearance, always-on-top behavior, whether closing the main window keeps the app running in the background, and control automatic checks or manually check GitHub Releases from the System section.
+- Settings window: configure language, appearance, menu bar mode/quota direction/visible metrics, always-on-top and close-window behavior, and control automatic checks or manually check GitHub Releases from the System section.
 - Main-window refresh button: immediately refresh quota, token usage, trend, and task board.
 - System window controls: close, minimize, or zoom the main window. After closing, reopen from the menu bar item or shortcut; quit from the menu bar runtime menu or the app menu.
 
