@@ -6723,15 +6723,7 @@ private func localDayKey(_ date: Date, calendar: Calendar = .current) -> String 
 }
 
 private func formatTokens(_ value: Int64?) -> String {
-    guard let value else { return "--" }
-    let absValue = abs(Double(value))
-    if absValue >= 1_000_000 {
-        return String(format: "%.1fM", Double(value) / 1_000_000)
-    }
-    if absValue >= 1_000 {
-        return String(format: "%.1fK", Double(value) / 1_000)
-    }
-    return "\(value)"
+    TokenFormatter.format(value)
 }
 
 private func formatBytes(_ value: Int64?) -> String {
