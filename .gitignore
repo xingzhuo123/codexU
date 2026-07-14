@@ -19,6 +19,12 @@ xcuserdata/
 .env
 .env.*
 !.env.example
+windows/.venv/
+windows/.pytest_cache/
+windows/**/__pycache__/
+windows/build/
+windows/dist/
+windows/*.spec.local
 
 # macOS packaging leftovers
 *.dmg

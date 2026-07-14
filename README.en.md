@@ -3,7 +3,26 @@
 > [!IMPORTANT]
 > **Upgrade to v1.0.1 or later.** After Codex was integrated into the ChatGPT desktop app, the macOS app was renamed from `Codex.app` to `ChatGPT.app`. Older codexU versions still look for the previous path, which can prevent quota and usage data from loading. v1.0.1 supports the new app name while retaining legacy-path and standard CLI fallbacks. [Download the latest release](https://github.com/shanggqm/codexU/releases/latest).
 
-codexU is a macOS menu bar and desktop app for tracking OpenAI Codex / ChatGPT Codex and Claude Code quota, token usage, and today's task status. It keeps the information you check most in the menu bar and main window, so you can quickly see remaining quota, reset times, and daily work progress.
+codexU is a local desktop app for tracking OpenAI Codex / ChatGPT Codex and Claude Code quota, token usage, and today's task status. The original app targets macOS; the repository now also contains an independent Windows preview implementation.
+
+## Windows Preview
+
+The Windows version lives in [`windows/`](windows/README.md) and supports Windows 10/11 x64 with a native window, system tray, and local SQLite/JSONL data readers. It does not upload usage, sessions, tasks, tool arguments, or local paths.
+
+Run from source:
+
+```powershell
+.\windows\setup.ps1
+.\windows\run.ps1
+```
+
+Build a portable package that does not require Python:
+
+```powershell
+.\windows\build.ps1
+```
+
+The output is `windows/dist/codexU-Windows-portable.zip`. DMG files in the current GitHub Releases remain macOS builds. See [`windows/README.md`](windows/README.md) for Windows details, the optional Claude Code quota bridge, and privacy boundaries.
 
 ![codexU v1.0.2 menu bar customization and main window](docs/screenshot-v1.0.2-status-bar-customization.png)
 

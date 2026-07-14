@@ -5,7 +5,26 @@
 
 [English](README.en.md)
 
-codexU 是一个 macOS 菜单栏与桌面应用，用来查看 OpenAI Codex / ChatGPT Codex 和 Claude Code 的额度窗口、token 用量和今日任务状态。它把常用信息放在菜单栏和主窗口里，帮助你快速判断剩余额度、重置时间和当天工作进展。
+codexU 是一个本地桌面应用，用来查看 OpenAI Codex / ChatGPT Codex 和 Claude Code 的额度窗口、token 用量和今日任务状态。原版面向 macOS；仓库现在也包含独立的 Windows 预览实现。
+
+## Windows 预览版
+
+Windows 版位于 [`windows/`](windows/README.md)，支持 Windows 10/11 x64，使用原生窗口、系统托盘和本机 SQLite/JSONL 数据源。它不会上传 usage、会话、任务、工具参数或本机路径。
+
+从源码运行：
+
+```powershell
+.\windows\setup.ps1
+.\windows\run.ps1
+```
+
+生成无需安装 Python 的便携版：
+
+```powershell
+.\windows\build.ps1
+```
+
+产物为 `windows/dist/codexU-Windows-portable.zip`。当前 GitHub Release 中的 DMG 仍是 macOS 版本；Windows 预览版的详细说明、Claude Code 可选额度桥接和隐私边界见 [`windows/README.md`](windows/README.md)。
 
 ## 界面截图
 

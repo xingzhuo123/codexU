@@ -10,7 +10,7 @@ Please report security issues privately instead of opening a public issue when t
 
 Include:
 
-- macOS version.
+- macOS or Windows version.
 - codexU version.
 - Whether the issue affects app launch, local file reads, quota reads, packaging, or update distribution.
 - Minimal reproduction steps without private Codex data.
@@ -28,6 +28,8 @@ codexU reads:
 - optional `~/Library/Caches/codexU/claude-code/statusline-snapshot.json`
 - optional `~/Library/Caches/codexU/update-check.json` for cached GitHub Release update metadata
 
+The Windows preview uses the corresponding `%USERPROFILE%\.codex` and `%USERPROFILE%\.claude` paths. Aggregate caches and the optional Claude Code quota snapshot are stored under `%LOCALAPPDATA%\codexU\Cache`. Project and session cache keys are hashed, and UI-facing project records do not contain full local paths.
+
 It should not upload local usage, transcript, task, thread, account, or path data to a third-party service. Claude Code transcript parsing must not store prompt text, assistant response text, tool arguments, or tool output.
 
 ## Network Scope
@@ -37,3 +39,5 @@ codexU is local-first. The update checker may request public GitHub Release meta
 Update requests must not include local usage, transcript, task, thread, account, path, prompt, response, tool argument, or tool output data. The update checker may send standard HTTPS headers such as `User-Agent` and `If-None-Match` for ETag caching.
 
 codexU must not silently download, install, replace, or relaunch the app as part of the GitHub Release check. It may open the user's default browser to a matching DMG asset or the Release page.
+
+The Windows preview does not currently perform automatic release checks. Its Claude Code statusline bridge reads JSON from local stdin and writes only allow-listed quota percentages, reset times, and capture time to the local cache.

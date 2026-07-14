@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- 新增 Windows 10/11 x64 预览版：PySide6 原生窗口、系统托盘、单实例唤醒、浅色/深色主题和中英文界面。
+- 移植 Codex app-server、动态 SQLite schema、session token delta、项目、工具、Skill、任务及 Claude Code 本地 transcript 聚合，并保持聚合-only 与路径脱敏边界。
+- 新增 Windows 测试、演示模式、聚合诊断、PyInstaller 便携包、SHA-256 校验和及 Claude Code statusline 白名单桥接脚本。
+
 ## 1.0.3 - 2026-07-11
 
 - 新增跟随系统、UTC 日界线与固定 IANA 时区三种自然日统计模式，Codex、Claude Code、趋势、任务与 SQLite 回退统一使用同一时区口径。
